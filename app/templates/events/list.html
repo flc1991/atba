@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Events &amp; Schedule — ATBA Herding{% endblock %}
+
+{% block content %}
+<h1>Events &amp; Schedule</h1>
+
+{% if events %}
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Event</th>
+          <th>Location</th>
+          <th>Type</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for event in events %}
+          <tr>
+            <td style="white-space:nowrap;">
+              {{ event.start_date.strftime('%b %d') }}
+              {% if event.start_date != event.end_date %}
+                &ndash; {{ event.end_date.strftime('%b %d, %Y') }}
+              {% else %}
+                , {{ event.start_date.strftime('%Y') }}
+              {% endif %}
+            </td>
+            <td><a href="/events/{{ event.id }}">{{ event.title }}</a></td>
+            <td>{{ event.location or '' }}</td>
+            <td>{{ event.event_type | replace('_', ' ') | title }}</td>
+            <td><a href="/events/{{ event.id }}" class="btn btn-primary btn-sm">Details</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <p>No upcoming events found. Check back soon!</p>
+{% endif %}
+{% endblock %}

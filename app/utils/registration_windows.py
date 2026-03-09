@@ -40,18 +40,25 @@ def compute_ahba_close(ahba_trial_date: date) -> datetime:
 # Trial open/closed status
 # ---------------------------------------------------------------------------
 
+def _ensure_utc(dt: datetime) -> datetime:
+    """Attach UTC timezone to a naive datetime (SQLite stores datetimes without tz)."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt
+
+
 def get_trial_status(reg_close_dt: datetime | None) -> str:
     """Return 'open' or 'closed' based on the current UTC time."""
     if reg_close_dt is None:
         return "open"
-    return "open" if datetime.now(UTC) < reg_close_dt else "closed"
+    return "open" if datetime.now(UTC) < _ensure_utc(reg_close_dt) else "closed"
 
 
 # ---------------------------------------------------------------------------
 # Fun Run / Smart Dog Day pricing tier
 # ---------------------------------------------------------------------------
 
-def get_pricing_tier(pre_entry_close_dt: datetime | None) -> str:
+def get_pricing_tier(pre_entry_close_dt: datetime | None) -> str:  # noqa: E302
     """
     Return the applicable pricing tier name:
       - 'pre_member' / 'pre_general'  — before pre_entry_close_dt (caller decides which)
@@ -61,7 +68,7 @@ def get_pricing_tier(pre_entry_close_dt: datetime | None) -> str:
     """
     if pre_entry_close_dt is None:
         return "late"
-    return "pre" if datetime.now(UTC) < pre_entry_close_dt else "late"
+    return "pre" if datetime.now(UTC) < _ensure_utc(pre_entry_close_dt) else "late"
 
 
 def resolve_pricing_tier(pre_entry_close_dt: datetime | None, is_current_member: bool) -> str:

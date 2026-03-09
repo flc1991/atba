@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}{{ event.title }} — ATBA Herding{% endblock %}
+
+{% block content %}
+<h1>{{ event.title }}</h1>
+
+<p>
+  <strong>Date:</strong>
+  {{ event.start_date.strftime('%B %d, %Y') }}
+  {% if event.start_date != event.end_date %}
+    &ndash; {{ event.end_date.strftime('%B %d, %Y') }}
+  {% endif %}
+  <br>
+  {% if event.location %}
+    <strong>Location:</strong> {{ event.location }}<br>
+  {% endif %}
+</p>
+
+{% if event.description %}
+  <p>{{ event.description }}</p>
+{% endif %}
+
+{# ---- Trial weekend ---- #}
+{% if event.event_type == 'trial' %}
+  <section>
+    <h2>Trials</h2>
+    {% for trial in trials %}
+      <div class="trial-section" style="margin-bottom:1.5rem;">
+        <h3>{{ trial.governing_body }} Trial
+          {% if trial.akc_event_number %} — Event #{{ trial.akc_event_number }}{% endif %}
+        </h3>
+
+        {% set status = trial_statuses[trial.id] %}
+        {% if status == 'closed' %}
+          <p><strong style="color:#c0392b;">Registration for this trial is now closed.</strong></p>
+        {% else %}
+          <p>Registration is open.</p>
+        {% endif %}
+
+        <h4>Events &amp; Classes</h4>
+        {% if trial_events_map[trial.id] %}
+          <ul>
+            {% for te in trial_events_map[trial.id] %}
+              <li>
+                <strong>{{ te.name }}</strong>:
+                {% for cls in te_classes_map[te.id] %}{{ cls.name }}{% if not loop.last %}, {% endif %}{% endfor %}
+              </li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+
+        {# PDFs #}
+        {% if pdfs_by_body[trial.governing_body] %}
+          <p>
+            {% for pdf in pdfs_by_body[trial.governing_body] %}
+              <a href="/events/{{ event.id }}/docs/{{ trial.governing_body }}/{{ pdf.document_type }}.pdf"
+                 class="btn btn-secondary btn-sm">
+                Download {{ pdf.document_type | replace('_', ' ') | title }}
+              </a>&nbsp;
+            {% endfor %}
+          </p>
+        {% endif %}
+      </div>
+    {% endfor %}
+
+    {# Entry button — only if at least one trial is still open #}
+    {% if any_trial_open %}
+      <a href="/events/{{ event.id }}/trial/enter" class="btn btn-primary">Enter This Trial Weekend</a>
+    {% else %}
+      <p><em>All trial registrations are closed.</em></p>
+    {% endif %}
+  </section>
+
+{# ---- Fun Run / Smart Dog Day ---- #}
+{% elif event.event_type in ('fun_run', 'smart_dog_day') %}
+  <section>
+    <h2>Registration</h2>
+    {% set route = 'fun-run' if event.event_type == 'fun_run' else 'smart-dog-day' %}
+
+    <table style="max-width:360px;">
+      <thead><tr><th>Rate</th><th>Price</th></tr></thead>
+      <tbody>
+        {% if event.fee_pre_member_cents %}
+          <tr><td>Pre-entry (member)</td><td>${{ "%.2f" | format(event.fee_pre_member_cents / 100) }}</td></tr>
+          <tr><td>Pre-entry (general)</td><td>${{ "%.2f" | format(event.fee_pre_general_cents / 100) }}</td></tr>
+        {% endif %}
+        {% if event.fee_late_cents %}
+          <tr><td>Late / day-of</td><td>${{ "%.2f" | format(event.fee_late_cents / 100) }}</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+
+    {% if event.pre_entry_close_dt %}
+      <p>Pre-entry closes: <strong>{{ event.pre_entry_close_dt.strftime('%B %d, %Y at %-I:%M %p') }} ET</strong></p>
+    {% endif %}
+
+    <a href="/events/{{ event.id }}/register/{{ route }}" class="btn btn-primary" style="margin-top:1rem;">Register</a>
+  </section>
+{% endif %}
+{% endblock %}
