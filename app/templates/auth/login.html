@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Login — ATBA Herding{% endblock %}
+
+{% block content %}
+<h1>Login</h1>
+<form method="post" action="/auth/login" style="max-width:420px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  {% if next %}
+    <input type="hidden" name="next" value="{{ next }}">
+  {% endif %}
+
+  <div class="form-group">
+    <label for="email">Email address</label>
+    <input type="email" id="email" name="email" required autocomplete="email"
+           value="{{ form_data.email or '' }}">
+  </div>
+
+  <div class="form-group">
+    <label for="password">Password</label>
+    <input type="password" id="password" name="password" required autocomplete="current-password">
+  </div>
+
+  <button type="submit" class="btn btn-primary">Login</button>
+  <p style="margin-top:1rem;">
+    Don't have an account? <a href="/auth/register">Register</a>
+  </p>
+</form>
+{% endblock %}

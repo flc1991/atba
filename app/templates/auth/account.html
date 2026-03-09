@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}My Account — ATBA Herding{% endblock %}
+
+{% block content %}
+<h1>My Account</h1>
+
+<form method="post" action="/auth/account" style="max-width:560px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  <div class="form-group">
+    <label for="name">Full name</label>
+    <input type="text" id="name" name="name" required value="{{ user.name }}">
+  </div>
+
+  <div class="form-group">
+    <label>Email address</label>
+    <input type="email" value="{{ user.email }}" disabled>
+    <div class="form-hint">Email cannot be changed here. Contact an admin if needed.</div>
+  </div>
+
+  <fieldset>
+    <legend>Change Password <span class="form-hint">(leave blank to keep current)</span></legend>
+    <div class="form-group">
+      <label for="new_password">New password</label>
+      <input type="password" id="new_password" name="new_password" minlength="8" autocomplete="new-password">
+    </div>
+    <div class="form-group">
+      <label for="new_password2">Confirm new password</label>
+      <input type="password" id="new_password2" name="new_password2" minlength="8" autocomplete="new-password">
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Address</legend>
+    <div class="form-group">
+      <label for="address_line1">Street address</label>
+      <input type="text" id="address_line1" name="address_line1" value="{{ user.address_line1 }}">
+    </div>
+    <div class="form-group">
+      <label for="address_line2">Apt / Suite / Other <span class="form-hint">(optional)</span></label>
+      <input type="text" id="address_line2" name="address_line2" value="{{ user.address_line2 or '' }}">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="city">City</label>
+        <input type="text" id="city" name="city" value="{{ user.city }}">
+      </div>
+      <div class="form-group" id="state-group">
+        <label for="state_province">State / Province</label>
+        <input type="text" id="state_province" name="state_province" value="{{ user.state_province or '' }}">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="postal_code">Postal code</label>
+        <input type="text" id="postal_code" name="postal_code" value="{{ user.postal_code }}">
+      </div>
+      <div class="form-group">
+        <label for="country">Country</label>
+        <select id="country" name="country">
+          {% for code, name in countries %}
+            <option value="{{ code }}" {% if user.country == code %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </fieldset>
+
+  <div class="form-group">
+    <label for="phone">Phone number <span class="form-hint">(optional)</span></label>
+    <input type="tel" id="phone" name="phone" value="{{ user.phone or '' }}">
+  </div>
+
+  <button type="submit" class="btn btn-primary">Save Changes</button>
+  &nbsp;<a href="/auth/entries" class="btn btn-secondary">My Entries</a>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const countryEl = document.getElementById('country');
+  const stateGroup = document.getElementById('state-group');
+  function toggleState() {
+    const noState = ['AE','AP','AQ','BN','HK','KW','MO','MY','SG','NP','HN','PA','AW'];
+    stateGroup.style.display = noState.includes(countryEl.value) ? 'none' : '';
+  }
+  countryEl.addEventListener('change', toggleState);
+  toggleState();
+</script>
+{% endblock %}

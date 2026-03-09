@@ -1,8 +1,11 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import settings
+from app.limiter import limiter
 from app.middleware import SecurityHeadersMiddleware
 
 
@@ -13,6 +16,10 @@ def create_app() -> FastAPI:
         docs_url="/api/docs" if settings.DEBUG else None,
         redoc_url=None,
     )
+
+    # Rate limiter
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
     # Middleware (added in reverse order — last added runs first)
     app.add_middleware(SecurityHeadersMiddleware)

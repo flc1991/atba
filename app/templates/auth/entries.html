@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}My Entries — ATBA Herding{% endblock %}
+
+{% block content %}
+<h1>My Entries</h1>
+
+{% if trial_entries or registrations %}
+
+  {% if trial_entries %}
+    <h2>Trial Entries</h2>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Event</th>
+            <th>Dog</th>
+            <th>Governing Body</th>
+            <th>Entries</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for entry, event, selections in trial_entries %}
+            <tr>
+              <td>{{ event.title }}<br><small>{{ event.start_date.strftime('%B %d, %Y') }}</small></td>
+              <td>{{ entry.dog_name }}</td>
+              <td>
+                {% set bodies = selections | map(attribute='governing_body') | unique | list %}
+                {{ bodies | join(', ') }}
+              </td>
+              <td>
+                {% for sel in selections %}
+                  {{ sel.trial_event_name }} — {{ sel.class_name }}<br>
+                {% endfor %}
+              </td>
+              <td>
+                {% if entry.is_paid %}
+                  <span style="color:green;">&#10003; Paid</span>
+                {% else %}
+                  <span style="color:#c0392b;">Pending payment</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+  {% if registrations %}
+    <h2 style="margin-top:2rem;">Fun Run / Smart Dog Day Registrations</h2>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Event</th>
+            <th>Dog</th>
+            <th>Fee</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for reg, event in registrations %}
+            <tr>
+              <td>{{ event.title }}<br><small>{{ event.start_date.strftime('%B %d, %Y') }}</small></td>
+              <td>{{ reg.dog_name }}</td>
+              <td>${{ "%.2f" | format(reg.fee_cents / 100) }}</td>
+              <td>
+                {% if reg.is_paid %}
+                  <span style="color:green;">&#10003; Paid</span>
+                {% else %}
+                  <span style="color:#c0392b;">Pending payment</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+{% else %}
+  <p>You have no entries yet. <a href="/events">Browse upcoming events</a>.</p>
+{% endif %}
+{% endblock %}
