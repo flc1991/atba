@@ -9,18 +9,29 @@
 </head>
 <body>
   <header>
-    <nav class="navbar">
-      <a class="nav-brand" href="/">ATBA Herding</a>
+    <div class="site-header">
+      <div class="site-title">
+        <a href="/">American Tending Breeds Association</a>
+      </div>
+      <div class="site-tagline">Herding Trials &amp; Events</div>
+    </div>
+    <nav class="navbar" aria-label="Main navigation">
       <ul class="nav-links">
         <li><a href="/">Home</a></li>
-        <li><a href="/events">Events</a></li>
+        <li><a href="/events">Events &amp; Schedule</a></li>
         <li><a href="/about">About ATBA</a></li>
         {% if current_user %}
-          <li><a href="/auth/account">My Account</a></li>
-          {% if current_user.role == 'admin' %}
-            <li><a href="/admin">Admin</a></li>
-          {% endif %}
-          <li><a href="/auth/logout">Logout</a></li>
+          <li class="nav-dropdown">
+            <span class="nav-dropdown-toggle">{{ current_user.name.split()[0] }} &#9660;</span>
+            <ul class="nav-dropdown-menu">
+              <li><a href="/auth/account">My Account</a></li>
+              <li><a href="/auth/entries">My Entries</a></li>
+              {% if current_user.role == 'admin' %}
+                <li><a href="/admin">Admin Panel</a></li>
+              {% endif %}
+              <li><a href="/auth/logout">Logout</a></li>
+            </ul>
+          </li>
         {% else %}
           <li><a href="/auth/login">Login</a></li>
           <li><a href="/auth/register">Register</a></li>
@@ -29,9 +40,9 @@
     </nav>
   </header>
 
-  <main class="main-content">
+  <main class="main-content" id="main-content">
     {% if flash_messages %}
-      <div class="flash-messages">
+      <div class="flash-messages" role="alert">
         {% for category, message in flash_messages %}
           <div class="flash flash-{{ category }}">{{ message }}</div>
         {% endfor %}
@@ -42,7 +53,14 @@
   </main>
 
   <footer>
-    <p>American Tending Breeds Association &mdash; <a href="mailto:info@atba-herding.org">info@atba-herding.org</a></p>
+    <div class="footer-inner">
+      <p>American Tending Breeds Association</p>
+      <p>
+        <a href="mailto:info@atba-herding.org">info@atba-herding.org</a>
+        &nbsp;&mdash;&nbsp;
+        <a href="/about">About ATBA</a>
+      </p>
+    </div>
   </footer>
 
   {% block scripts %}{% endblock %}

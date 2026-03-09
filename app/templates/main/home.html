@@ -1,6 +1,56 @@
 {% extends "base.html" %}
 {% block title %}ATBA Herding — Home{% endblock %}
+
 {% block content %}
-<h1>Welcome to the American Tending Breeds Association</h1>
-<p>Upcoming events will appear here.</p>
+<section class="hero">
+  <div class="hero-photos">
+    <img src="{{ url_for('static', path='photos/PXL_20250105_213521834.jpg') }}" alt="Herding dog working sheep" class="hero-img">
+    <img src="{{ url_for('static', path='photos/IMG_3675.JPG') }}" alt="Herding trial" class="hero-img hero-img-secondary">
+  </div>
+  <div class="hero-text">
+    <h1>American Tending Breeds Association</h1>
+    <p>
+      The ATBA promotes the herding instinct and working ability of tending breeds
+      through AKC and AHBA herding trials, fun runs, and educational events.
+    </p>
+    <a href="/events" class="btn btn-primary">View Full Schedule</a>
+    &nbsp;
+    <a href="/about" class="btn btn-secondary">About ATBA</a>
+  </div>
+</section>
+
+<section class="upcoming-events">
+  <h2>Upcoming Events</h2>
+  {% if upcoming_events %}
+    <div class="event-cards">
+      {% for event in upcoming_events %}
+        <div class="event-card">
+          <div class="event-card-date">
+            {{ event.start_date.strftime('%b %d') }}
+            {% if event.start_date != event.end_date %}
+              &ndash; {{ event.end_date.strftime('%b %d, %Y') }}
+            {% else %}
+              , {{ event.start_date.strftime('%Y') }}
+            {% endif %}
+          </div>
+          <div class="event-card-body">
+            <h3><a href="/events/{{ event.id }}">{{ event.title }}</a></h3>
+            {% if event.location %}
+              <p class="event-location">{{ event.location }}</p>
+            {% endif %}
+            {% if event.description %}
+              <p>{{ event.description | truncate(120) }}</p>
+            {% endif %}
+          </div>
+          <div class="event-card-footer">
+            <a href="/events/{{ event.id }}" class="btn btn-primary btn-sm">Details &amp; Register</a>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+    <p style="margin-top:1rem;"><a href="/events">View all events &rarr;</a></p>
+  {% else %}
+    <p>No upcoming events at this time. Check back soon!</p>
+  {% endif %}
+</section>
 {% endblock %}

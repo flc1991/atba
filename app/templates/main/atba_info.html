@@ -1,6 +1,78 @@
 {% extends "base.html" %}
-{% block title %}About ATBA{% endblock %}
+{% block title %}About ATBA — American Tending Breeds Association{% endblock %}
+
 {% block content %}
 <h1>About the American Tending Breeds Association</h1>
-<p>ATBA information coming soon.</p>
+
+<div class="info-grid">
+  <div class="info-main">
+    <section>
+      <h2>What is ATBA?</h2>
+      <p>
+        The American Tending Breeds Association (ATBA) is a non-profit organization dedicated to
+        preserving and promoting the herding instinct and working ability of tending breeds.
+        We host AKC and AHBA sanctioned herding trials as well as fun runs and educational events
+        throughout the year.
+      </p>
+    </section>
+
+    <section>
+      <h2>What Are Tending Breeds?</h2>
+      <p>
+        Tending breeds are herding dogs that work in a distinctive style — tending flocks at the
+        boundaries of unfenced land, keeping livestock within a defined area without the use of
+        fences. Breeds include the German Shepherd Dog, Belgian Tervuren, Belgian Malinois,
+        Belgian Sheepdog, Briard, and others.
+      </p>
+    </section>
+
+    <section>
+      <h2>Herding Titles</h2>
+      <h3>AKC Herding</h3>
+      <p>
+        AKC herding trials test a dog's ability to herd livestock under the direction of a handler.
+        Classes include Started, Intermediate, and Advanced. Events may use ducks, sheep, or cattle.
+      </p>
+      <h3>AHBA Herding</h3>
+      <p>
+        The American Herding Breed Association (AHBA) offers its own title program.
+        Classes run I, II, and III. ATBA often runs AKC and AHBA trials in the same weekend.
+      </p>
+    </section>
+
+    <section>
+      <h2>Membership</h2>
+      <p>
+        ATBA membership is per calendar year. Members receive discounted entry rates for
+        Fun Runs and Smart Dog Days during the pre-entry window.
+        To join or renew, contact us at
+        <a href="mailto:info@atba-herding.org">info@atba-herding.org</a>.
+      </p>
+    </section>
+
+    <section>
+      <h2>Contact Us</h2>
+      <p>
+        For general inquiries: <a href="mailto:info@atba-herding.org">info@atba-herding.org</a><br>
+      </p>
+    </section>
+  </div>
+
+  <aside class="info-sidebar">
+    <div class="sidebar-photo">
+      <img src="{{ url_for('static', path='photos/IMG_3695.JPG') }}" alt="Dog herding livestock" style="max-width:100%;border-radius:6px;">
+    </div>
+    <div class="sidebar-photo" style="margin-top:1rem;">
+      <img src="{{ url_for('static', path='photos/PXL_20240411_170455082.jpg') }}" alt="Herding trial action" style="max-width:100%;border-radius:6px;">
+    </div>
+    <div class="quick-links" style="margin-top:1.5rem;">
+      <h3>Quick Links</h3>
+      <ul>
+        <li><a href="/events">Events &amp; Schedule</a></li>
+        <li><a href="/auth/register">Create an Account</a></li>
+        <li><a href="/auth/login">Member Login</a></li>
+      </ul>
+    </div>
+  </aside>
+</div>
 {% endblock %}
