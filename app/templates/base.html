@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}ATBA Herding{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='css/main.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <header>
+    <nav class="navbar">
+      <a class="nav-brand" href="/">ATBA Herding</a>
+      <ul class="nav-links">
+        <li><a href="/">Home</a></li>
+        <li><a href="/events">Events</a></li>
+        <li><a href="/about">About ATBA</a></li>
+        {% if current_user %}
+          <li><a href="/auth/account">My Account</a></li>
+          {% if current_user.role == 'admin' %}
+            <li><a href="/admin">Admin</a></li>
+          {% endif %}
+          <li><a href="/auth/logout">Logout</a></li>
+        {% else %}
+          <li><a href="/auth/login">Login</a></li>
+          <li><a href="/auth/register">Register</a></li>
+        {% endif %}
+      </ul>
+    </nav>
+  </header>
+
+  <main class="main-content">
+    {% if flash_messages %}
+      <div class="flash-messages">
+        {% for category, message in flash_messages %}
+          <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer>
+    <p>American Tending Breeds Association &mdash; <a href="mailto:info@atba-herding.org">info@atba-herding.org</a></p>
+  </footer>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>
