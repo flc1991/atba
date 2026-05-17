@@ -3,10 +3,12 @@ services:
     name: atba-herding
     runtime: python
     buildCommand: pip install -r requirements.txt
-    # preDeployCommand runs after the persistent disk is mounted at /data,
-    # so the SQLite file ends up in the right place (build container has no disk).
-    preDeployCommand: alembic upgrade head && python seed.py
-    startCommand: gunicorn main:app -k uvicorn.workers.UvicornWorker -w 2 --bind 0.0.0.0:$PORT
+    # Run migrations + seed at startup so they execute after the persistent disk
+    # is mounted at /data. Both commands are idempotent so re-running on each
+    # restart is safe. (startCommand is also more reliable than preDeployCommand,
+    # which can be silently skipped on some Render plans / on the first Blueprint
+    # deploy.)
+    startCommand: alembic upgrade head && python seed.py && gunicorn main:app -k uvicorn.workers.UvicornWorker -w 2 --bind 0.0.0.0:$PORT
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9

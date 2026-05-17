@@ -185,25 +185,20 @@ def seed(db: Session) -> None:
         "the same event may be entered more than once, and you can choose whether each "
         "run is judged or unjudged."
     )
-    may_pre_close = datetime(2026, 5, 3, 23, 59, 59, tzinfo=timezone.utc)
-    may_fun_match = db.query(Event).filter_by(title="2026 May Fun Match").first()
-    if not may_fun_match:
-        may_fun_match = Event(
+    if not db.query(Event).filter_by(title="2026 May Fun Match").first():
+        db.add(Event(
             title="2026 May Fun Match",
             event_type="fun_run",
             start_date=date(2026, 5, 9),
             end_date=date(2026, 5, 9),
             location=LOCATION,
+            description=fun_run_description,
+            fee_pre_member_cents=1000,
+            fee_pre_general_cents=2500,
+            fee_late_cents=3500,
+            pre_entry_close_dt=datetime(2026, 5, 3, 23, 59, 59, tzinfo=timezone.utc),
             is_published=True,
-        )
-        db.add(may_fun_match)
-    # Idempotent updates so re-running picks up new pricing/description
-    may_fun_match.description = fun_run_description
-    may_fun_match.fee_pre_member_cents = 1000
-    may_fun_match.fee_pre_general_cents = 2500
-    may_fun_match.fee_late_cents = 3500
-    may_fun_match.pre_entry_close_dt = may_pre_close
-    may_fun_match.location = LOCATION
+        ))
 
     # ------------------------------------------------------------------ Jun 2026 — Smart Dog Day
     if not db.query(Event).filter_by(title="2026 Smart Dog Day").first():
@@ -282,20 +277,18 @@ def seed(db: Session) -> None:
         _add_ahba_trial_events(db, july_ahba.id)
 
     # ------------------------------------------------------------------ Oct 2026 — fun match
-    oct_fun_match = db.query(Event).filter_by(title="2026 October Fun Match").first()
-    if not oct_fun_match:
-        oct_fun_match = Event(
+    # No pricing yet — pricing is what gates the homepage "registering" filter,
+    # so leaving fees null marks the event as not-yet-open.
+    if not db.query(Event).filter_by(title="2026 October Fun Match").first():
+        db.add(Event(
             title="2026 October Fun Match",
             event_type="fun_run",
             start_date=date(2026, 10, 3),
             end_date=date(2026, 10, 3),
             location=LOCATION,
+            description=fun_run_description,
             is_published=True,
-        )
-        db.add(oct_fun_match)
-    # Idempotent updates — same description as May, but no pricing yet (registration not yet open)
-    oct_fun_match.description = fun_run_description
-    oct_fun_match.location = LOCATION
+        ))
 
     # ------------------------------------------------------------------ Oct 2026 — AKC + AHBA trial weekend
     # NOTE: Registration for October is not yet open — Trials seeded with reg_close_dt = None
@@ -317,20 +310,10 @@ def seed(db: Session) -> None:
         db.add(oct_trial)
         db.flush()
 
-    oct_akc = db.query(Trial).filter_by(event_id=oct_trial.id, governing_body="AKC").first()
-    if not oct_akc:
-        oct_akc = Trial(event_id=oct_trial.id, governing_body="AKC", reg_close_dt=None)
-        db.add(oct_akc)
-    else:
-        # Existing DBs may have a date set from the previous seed; clear it.
-        oct_akc.reg_close_dt = None
-
-    oct_ahba = db.query(Trial).filter_by(event_id=oct_trial.id, governing_body="AHBA").first()
-    if not oct_ahba:
-        oct_ahba = Trial(event_id=oct_trial.id, governing_body="AHBA", reg_close_dt=None)
-        db.add(oct_ahba)
-    else:
-        oct_ahba.reg_close_dt = None
+    if not db.query(Trial).filter_by(event_id=oct_trial.id, governing_body="AKC").first():
+        db.add(Trial(event_id=oct_trial.id, governing_body="AKC", reg_close_dt=None))
+    if not db.query(Trial).filter_by(event_id=oct_trial.id, governing_body="AHBA").first():
+        db.add(Trial(event_id=oct_trial.id, governing_body="AHBA", reg_close_dt=None))
 
     # ------------------------------------------------------------------ members
     for name, year in [
