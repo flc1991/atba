@@ -1,0 +1,104 @@
+{% extends "admin/base.html" %}
+{% block title %}{% if trial %}Edit Trial{% else %}Add Trial{% endif %} — Admin{% endblock %}
+
+{% block admin_content %}
+<h1>{% if trial %}Edit {{ trial.governing_body }} Trial{% else %}Add Trial to {{ event.title }}{% endif %}</h1>
+<p><a href="/admin/events/{{ event.id }}/edit">&larr; Back to event</a></p>
+
+<form method="post"
+      action="{% if trial %}/admin/trials/{{ trial.id }}/edit{% else %}/admin/events/{{ event.id }}/trials/new{% endif %}"
+      style="max-width:560px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  <fieldset>
+    <legend>Trial Settings</legend>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="governing_body">Governing body</label>
+        <select id="governing_body" name="governing_body">
+          <option value="AKC" {% if (form_data.governing_body or 'AKC') == 'AKC' %}selected{% endif %}>AKC</option>
+          <option value="AHBA" {% if form_data.governing_body == 'AHBA' %}selected{% endif %}>AHBA</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="akc_event_number">Event 1 number <span class="form-hint">(AKC only)</span></label>
+        <input type="text" id="akc_event_number" name="akc_event_number"
+               value="{{ form_data.akc_event_number or '' }}" placeholder="e.g. 2026226901">
+      </div>
+      <div class="form-group">
+        <label for="akc_event_number_2">Event 2 number <span class="form-hint">(AKC only, if applicable)</span></label>
+        <input type="text" id="akc_event_number_2" name="akc_event_number_2"
+               value="{{ form_data.akc_event_number_2 or '' }}" placeholder="e.g. 2026226902">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="reg_close_dt_override">
+          Reg close (ET) <span class="form-hint">leave blank to auto-compute</span>
+        </label>
+        <input type="datetime-local" id="reg_close_dt_override" name="reg_close_dt_override"
+               value="{{ form_data.reg_close_dt_override or '' }}">
+      </div>
+    </div>
+  </fieldset>
+
+  {% if not trial %}
+    <fieldset>
+      <legend>Events &amp; Classes <span class="form-hint">(add up to 10 events)</span></legend>
+      <p class="form-hint">Enter event name and comma-separated class names (e.g. "Started, Intermediate, Advanced").</p>
+      {% for i in range(10) %}
+        <div class="form-row" style="align-items:flex-end; margin-bottom:0.25rem;">
+          <div class="form-group" style="flex:1;">
+            <label>Event {{ i + 1 }} name</label>
+            <input type="text" name="te_name_{{ i }}" placeholder="e.g. Duck A">
+          </div>
+          <div class="form-group" style="flex:2;">
+            <label>Classes (comma-separated)</label>
+            <input type="text" name="te_classes_{{ i }}" placeholder="Started, Intermediate, Advanced">
+          </div>
+        </div>
+      {% endfor %}
+    </fieldset>
+  {% else %}
+    {# Show existing events / classes read-only when editing #}
+    <fieldset>
+      <legend>Events &amp; Classes</legend>
+      {% if trial_events %}
+        <table>
+          <thead><tr><th>Event</th><th>Classes</th></tr></thead>
+          <tbody>
+            {% for te in trial_events %}
+              <tr>
+                <td>{{ te.name }}</td>
+                <td>{% for cls in te_classes_map[te.id] %}{{ cls.name }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p>No events/classes yet.</p>
+      {% endif %}
+      <p class="form-hint">To modify events/classes, contact a developer or use the database directly.</p>
+    </fieldset>
+  {% endif %}
+
+  <div style="margin-top:1rem;">
+    <button type="submit" class="btn btn-primary">{% if trial %}Save Trial{% else %}Add Trial{% endif %}</button>
+    <a href="/admin/events/{{ event.id }}/edit" class="btn btn-secondary" style="margin-left:0.5rem;">Cancel</a>
+  </div>
+</form>
+
+{% if trial %}
+  <div style="margin-top:2rem; padding-top:1rem; border-top:1px solid #eee; display:flex; gap:1rem;">
+    <form method="post" action="/admin/trials/{{ trial.id }}/copy">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn-secondary">Copy this trial</button>
+    </form>
+    <form method="post" action="/admin/trials/{{ trial.id }}/delete"
+          onsubmit="return confirm('Delete trial? This cannot be undone if entries exist.')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+    </form>
+  </div>
+{% endif %}
+{% endblock %}

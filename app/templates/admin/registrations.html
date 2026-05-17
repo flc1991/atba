@@ -1,0 +1,88 @@
+{% extends "admin/base.html" %}
+{% block title %}Registrations — {{ event.title }} — Admin{% endblock %}
+
+{% block admin_content %}
+<h1>Registrations</h1>
+<h2>{{ event.title }}</h2>
+<p><a href="/admin/events/{{ event.id }}/edit">&larr; Back to event</a></p>
+
+{# Manual entry #}
+<details style="margin-bottom:1.5rem; border:1px solid #ddd; border-radius:4px; padding:1rem;">
+  <summary style="cursor:pointer; font-weight:bold;">+ Add Manual Registration</summary>
+  <form method="post" action="/admin/registrations/new" style="margin-top:1rem; max-width:480px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="event_id" value="{{ event.id }}">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Name</label><input type="text" name="name" required>
+      </div>
+      <div class="form-group">
+        <label>Email</label><input type="email" name="email">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Dog name</label><input type="text" name="dog_name" required>
+      </div>
+      <div class="form-group">
+        <label>Pricing tier</label>
+        <select name="pricing_tier">
+          <option value="pre_member">Pre-entry (member)</option>
+          <option value="pre_general">Pre-entry (general)</option>
+          <option value="late" selected>Late / day-of</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Fee (cents)</label><input type="number" name="fee_cents" value="0" min="0">
+      </div>
+      <div class="form-group" style="align-self:flex-end;">
+        <label><input type="checkbox" name="is_paid" value="1"> Paid</label>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">Add Registration</button>
+  </form>
+</details>
+
+{% if registrations %}
+  <table>
+    <thead>
+      <tr>
+        <th>#</th><th>Name</th><th>Dog</th><th>Email</th>
+        <th>Tier</th><th>Fee</th><th>Paid</th><th>Verified</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for reg in registrations %}
+        <tr>
+          <td>{{ reg.id }}</td>
+          <td>{{ reg.name }}</td>
+          <td>{{ reg.dog_name }}</td>
+          <td>{{ reg.email }}</td>
+          <td>{{ reg.pricing_tier | replace('_',' ') | title }}</td>
+          <td>${{ "%.2f" | format(reg.fee_cents / 100) }}</td>
+          <td>{{ '✓' if reg.is_paid else '—' }}</td>
+          <td>{{ '✓' if reg.verification_sent else '—' }}</td>
+          <td style="white-space:nowrap;">
+            <form method="post" action="/admin/registrations/{{ reg.id }}/edit" style="display:inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="name" value="{{ reg.name }}">
+              <input type="hidden" name="email" value="{{ reg.email }}">
+              <input type="hidden" name="dog_name" value="{{ reg.dog_name }}">
+              <input type="hidden" name="is_paid" value="{% if reg.is_paid %}1{% endif %}">
+            </form>
+            <form method="post" action="/admin/registrations/{{ reg.id }}/send-verification"
+                  style="display:inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="btn btn-secondary btn-sm">Email</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <p>No registrations yet.</p>
+{% endif %}
+{% endblock %}

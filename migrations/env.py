@@ -24,6 +24,7 @@ import app.models.event         # noqa: F401, E402
 import app.models.trial         # noqa: F401, E402
 import app.models.event_pdf     # noqa: F401, E402
 import app.models.registration  # noqa: F401, E402
+import app.models.dog           # noqa: F401, E402
 
 target_metadata = Base.metadata
 

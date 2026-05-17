@@ -5,30 +5,34 @@
 <h1>Fun Run Registration</h1>
 <h2>{{ event.title }} &mdash; {{ event.start_date.strftime('%B %d, %Y') }}</h2>
 
-<div class="pricing-info" style="margin-bottom:1.5rem; padding:1rem; background:#eafaf1; border-left:4px solid #2ecc71; border-radius:4px;">
-  <strong>Your rate: ${{ "%.2f" | format(fee_cents / 100) }}</strong>
+<div style="margin-bottom:1.5rem; padding:1rem; background:#eafaf1; border-left:4px solid #2ecc71; border-radius:4px;">
+  <strong>Per-event fee: ${{ "%.2f" | format(fee_cents / 100) }}/event</strong>
   ({{ pricing_tier | replace('_', ' ') | title }})
   {% if pricing_tier == 'pre_member' %}
-    — Member pre-entry discount applied!
+    — Member pre-entry rate applied!
   {% elif pricing_tier == 'pre_general' %}
     — Pre-entry rate.
     {% if not current_user %} <a href="/auth/login">Log in</a> as a current member for a discount.{% endif %}
   {% else %}
     — Late/day-of rate.
   {% endif %}
+  <div style="margin-top:0.4rem; font-size:0.9em; color:#555;">
+    Select up to 4 events per dog. All AKC and AHBA herding events are offered.
+  </div>
 </div>
 
-<form method="post" action="/events/{{ event.id }}/register/fun-run" id="reg-form" style="max-width:560px;">
+<form method="post" action="/events/{{ event.id }}/register/fun-run" id="reg-form" style="max-width:640px;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
+  {# ---- Registrant Information ---- #}
   <fieldset>
     <legend>Your Information</legend>
     <div class="form-group">
-      <label for="name">Full name</label>
+      <label for="name">Full name <span class="required">*</span></label>
       <input type="text" id="name" name="name" required value="{{ form_data.name or '' }}">
     </div>
     <div class="form-group">
-      <label for="email">Email address</label>
+      <label for="email">Email address <span class="required">*</span></label>
       <input type="email" id="email" name="email" required value="{{ form_data.email or '' }}">
     </div>
     <div class="form-group">
@@ -61,61 +65,99 @@
       <div class="form-group">
         <label for="country">Country</label>
         <select id="country" name="country">
-          {% for code, name in countries %}
-            <option value="{{ code }}" {% if (form_data.country or 'US') == code %}selected{% endif %}>{{ name }}</option>
+          {% for code, cname in countries %}
+            <option value="{{ code }}" {% if (form_data.country or 'US') == code %}selected{% endif %}>{{ cname }}</option>
           {% endfor %}
         </select>
       </div>
     </div>
   </fieldset>
 
+  {# ---- Dogs & Runs ---- #}
   <fieldset>
-    <legend>Dog Information</legend>
-    <div class="form-group">
-      <label for="dog_name">Dog's name</label>
-      <input type="text" id="dog_name" name="dog_name" required value="{{ form_data.dog_name or '' }}">
+    <legend>Dogs &amp; Runs</legend>
+    <p style="font-size:0.9rem; color:#555; margin-top:0;">
+      Add each dog you are entering, then choose up to 4 runs per dog. The same event
+      may be entered more than once. Check &ldquo;Judged&rdquo; for any run you'd like scored.
+      Fee: <strong>${{ "%.2f" | format(fee_cents / 100) }} per run</strong>.
+    </p>
+
+    <div id="dogs-container">
+      {# Server-rendered dog blocks (for re-render after validation error) #}
+      {# JS will build blocks dynamically from funRunInitialDogs on page load #}
     </div>
+
+    <button type="button" id="add-dog-btn" class="btn btn-secondary" style="margin-top:0.75rem;">
+      + Add Another Dog
+    </button>
   </fieldset>
 
+  {# ---- Member claim (guests only) ---- #}
   {% if not current_user %}
-    <div class="form-group">
-      <label>
+    <div class="form-group" style="margin-bottom:1rem;">
+      <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;">
         <input type="checkbox" name="is_member_claim" value="1"
                {% if form_data.is_member_claim %}checked{% endif %}>
         I am a current ATBA member
       </label>
-      <div class="form-hint">Member discount applies during pre-entry only. Membership will be verified.</div>
+      <div class="form-hint" style="margin-left:1.5rem;">
+        Member discount applies during pre-entry only. Membership will be verified.
+      </div>
     </div>
   {% endif %}
 
-  <p><strong>Total due: ${{ "%.2f" | format(fee_cents / 100) }}</strong></p>
+  {# ---- Total & Payment ---- #}
+  <div style="margin:1.25rem 0; padding:0.75rem 1rem; background:#f0f8ff; border-left:4px solid #2980b9; border-radius:4px;">
+    <strong>Total due: $<span id="total-display">0.00</span></strong>
+  </div>
 
-  <div id="paypal-button-container" style="margin-top:1rem;"></div>
-  <input type="hidden" name="paypal_order_id" id="paypal_order_id">
-  <button type="submit" id="submit-btn" class="btn btn-primary" style="display:none;">Complete Registration</button>
+  <button type="submit" id="submit-btn" class="btn btn-primary" style="margin-top:1rem; font-size:1.05em;">
+    Continue to PayPal
+  </button>
 </form>
+
+<style>
+  .required { color: #c0392b; }
+  .form-hint { font-weight: normal; color: #777; font-size: 0.88em; }
+  .dog-block {
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    background: #fafafa;
+  }
+  .dog-block-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.75rem;
+  }
+  .btn-link {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font-size: 0.9em;
+    text-decoration: underline;
+  }
+</style>
 {% endblock %}
 
 {% block scripts %}
-<script src="https://www.paypal.com/sdk/js?client-id={{ paypal_client_id }}&currency=USD"></script>
-<script src="{{ url_for('static', path='js/registration.js') }}"></script>
 <script>
-  initPayPal({
-    createOrderUrl: '/payments/create-order',
-    captureOrderUrl: '/payments/capture-order',
+  window.funRunConfig = {
+    perEventFeeCents: {{ fee_cents }},
+    events: {{ fun_run_events | tojson }},
     eventId: {{ event.id }},
-    eventType: 'registration',
-    amountCents: {{ fee_cents }},
-    formId: 'reg-form',
-    orderIdFieldId: 'paypal_order_id',
-    submitBtnId: 'submit-btn',
-  });
-
+  };
+  window.funRunInitialDogs = {{ (initial_dogs or [{}]) | tojson }};
+</script>
+<script src="{{ url_for('static', path='js/fun_run_form.js') }}"></script>
+<script>
   // Country/state toggle
-  const countryEl = document.getElementById('country');
-  const stateGroup = document.getElementById('state-group');
+  var countryEl = document.getElementById('country');
+  var stateGroup = document.getElementById('state-group');
   function toggleState() {
-    const noState = ['AE','AP','AQ','BN','HK','KW','MO','MY','SG'];
+    var noState = ['AE','AP','AQ','BN','HK','KW','MO','MY','SG'];
     stateGroup.style.display = noState.includes(countryEl.value) ? 'none' : '';
   }
   countryEl.addEventListener('change', toggleState);

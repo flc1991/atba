@@ -1,0 +1,47 @@
+{% extends "admin/base.html" %}
+{% block title %}Call Numbers — {{ event.title }} — Admin{% endblock %}
+
+{% block admin_content %}
+<h1>Call Numbers</h1>
+<h2>{{ event.title }}</h2>
+<p><a href="/admin/events/{{ event.id }}/edit">&larr; Back to event</a></p>
+
+<form method="post" action="/admin/events/{{ event.id }}/call-numbers">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  {% for td in trial_data %}
+    <h3>{{ td.trial.governing_body }} Trial</h3>
+    {% for te_entry in td.te_data %}
+      <h4>{{ te_entry.te.name }}</h4>
+      {% if te_entry.rows %}
+        <table style="max-width:500px;">
+          <thead>
+            <tr>
+              <th>Handler</th><th>Dog</th><th>Class</th><th style="width:90px;">Call #</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in te_entry.rows %}
+              <tr>
+                <td>{{ row.entry.handler_name }}</td>
+                <td>{{ row.entry.dog_name }}</td>
+                <td>{{ row.cls.name }}</td>
+                <td>
+                  <input type="number" name="cn_{{ row.sel.id }}" min="1" style="width:80px;"
+                         value="{{ row.sel.call_number or '' }}">
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p style="color:#888;"><em>No entries for this event.</em></p>
+      {% endif %}
+    {% endfor %}
+  {% endfor %}
+
+  <div style="margin-top:1.5rem;">
+    <button type="submit" class="btn btn-primary">Save Call Numbers</button>
+  </div>
+</form>
+{% endblock %}

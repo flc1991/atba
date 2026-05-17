@@ -74,6 +74,225 @@
   <button type="submit" class="btn btn-primary">Save Changes</button>
   &nbsp;<a href="/auth/entries" class="btn btn-secondary">My Entries</a>
 </form>
+
+{# ---- My Dogs ---- #}
+<section id="dogs" style="max-width:560px; margin-top:2.5rem;">
+  <h2>My Dogs</h2>
+  <p style="color:#555; font-size:0.93rem;">
+    Saved dogs can be loaded into AKC and AHBA trial entry forms to save time.
+  </p>
+
+  {% if dogs %}
+    {% for dog in dogs %}
+      <div style="border:1px solid #ddd; border-radius:6px; padding:0.75rem 1rem; margin-bottom:0.75rem; background:#fafafa;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+          <div>
+            <strong>{{ dog.dog_name }}</strong>
+            {% if dog.dog_call_name and dog.dog_call_name != dog.dog_name %} &ldquo;{{ dog.dog_call_name }}&rdquo;{% endif %}
+            {% if dog.dog_breed %} &mdash; {{ dog.dog_breed }}{% endif %}
+            {% if dog.dog_sex %} ({{ 'Male' if dog.dog_sex == 'M' else 'Female' }}){% endif %}
+            {% if dog.dog_dob %}<br><span style="font-size:0.85em; color:#666;">DOB: {{ dog.dog_dob.strftime('%B %d, %Y') }}</span>{% endif %}
+            {% if dog.akc_registration_number %}<br><span style="font-size:0.85em; color:#666;">AKC: {{ dog.akc_number_type or '' }} {{ dog.akc_registration_number }}</span>{% endif %}
+            {% if dog.ahba_registration_number %}<br><span style="font-size:0.85em; color:#666;">AHBA: {{ dog.ahba_registration_number }}</span>{% endif %}
+          </div>
+          <div style="flex-shrink:0; margin-left:1rem; display:flex; gap:0.75rem; align-items:flex-start;">
+            <button type="button" class="btn-link" style="font-size:0.85em;"
+                    onclick="document.getElementById('edit-dog-{{ dog.id }}').open = !document.getElementById('edit-dog-{{ dog.id }}').open;">
+              Edit
+            </button>
+            <form method="post" action="/auth/dogs/{{ dog.id }}/delete" style="margin:0;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="btn-link" style="color:#c0392b; font-size:0.85em;"
+                      onclick="return confirm('Remove {{ dog.dog_name }} from your account?')">Remove</button>
+            </form>
+          </div>
+        </div>
+
+        <details id="edit-dog-{{ dog.id }}">
+          <summary style="display:none;"></summary>
+          <form method="post" action="/auth/dogs/{{ dog.id }}/edit" style="margin-top:0.5rem; padding:1rem; border:1px solid #ccc; border-radius:6px; background:#fff;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem 1rem;">
+              <div class="form-group" style="grid-column:1/-1;">
+                <label>Registered Name <span class="required">*</span></label>
+                <input type="text" name="dog_name" required value="{{ dog.dog_name }}">
+              </div>
+              <div class="form-group">
+                <label>Call Name</label>
+                <input type="text" name="dog_call_name" value="{{ dog.dog_call_name or '' }}">
+              </div>
+              <div class="form-group">
+                <label>Breed</label>
+                <input type="text" name="dog_breed" value="{{ dog.dog_breed or '' }}">
+              </div>
+              <div class="form-group">
+                <label>Sex</label>
+                <select name="dog_sex">
+                  <option value="" {% if not dog.dog_sex %}selected{% endif %}>— select —</option>
+                  <option value="M" {% if dog.dog_sex == 'M' %}selected{% endif %}>Male</option>
+                  <option value="F" {% if dog.dog_sex == 'F' %}selected{% endif %}>Female</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Date of Birth</label>
+                <input type="date" name="dog_dob" value="{{ dog.dog_dob.isoformat() if dog.dog_dob else '' }}">
+              </div>
+              <div class="form-group">
+                <label>Sire</label>
+                <input type="text" name="dog_sire" value="{{ dog.dog_sire or '' }}">
+              </div>
+              <div class="form-group">
+                <label>Dam</label>
+                <input type="text" name="dog_dam" value="{{ dog.dog_dam or '' }}">
+              </div>
+              <div class="form-group" style="grid-column:1/-1;">
+                <label>Breeder</label>
+                <input type="text" name="dog_breeder" value="{{ dog.dog_breeder or '' }}">
+              </div>
+            </div>
+            <fieldset style="margin-top:0.75rem;">
+              <legend style="font-size:0.9rem; font-weight:600;">AKC</legend>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem 1rem;">
+                <div class="form-group">
+                  <label>Reg. Type</label>
+                  <select name="akc_number_type" class="edit-akc-num-type" data-target="edit-foreign-{{ dog.id }}">
+                    <option value="" {% if not dog.akc_number_type %}selected{% endif %}>— none —</option>
+                    <option value="AKC" {% if dog.akc_number_type == 'AKC' %}selected{% endif %}>AKC</option>
+                    <option value="PAL_ILP" {% if dog.akc_number_type == 'PAL_ILP' %}selected{% endif %}>PAL/ILP</option>
+                    <option value="Foreign" {% if dog.akc_number_type == 'Foreign' %}selected{% endif %}>Foreign</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Reg. Number</label>
+                  <input type="text" name="akc_registration_number" value="{{ dog.akc_registration_number or '' }}">
+                </div>
+                <div class="form-group" id="edit-foreign-{{ dog.id }}"
+                     style="{% if dog.akc_number_type != 'Foreign' %}display:none;{% endif %}">
+                  <label>Country of Origin</label>
+                  <input type="text" name="akc_foreign_country" value="{{ dog.akc_foreign_country or '' }}">
+                </div>
+              </div>
+            </fieldset>
+            <fieldset style="margin-top:0.75rem;">
+              <legend style="font-size:0.9rem; font-weight:600;">AHBA</legend>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem 1rem;">
+                <div class="form-group">
+                  <label>Registry &amp; Number</label>
+                  <input type="text" name="ahba_registration_number" value="{{ dog.ahba_registration_number or '' }}">
+                </div>
+                <div class="form-group">
+                  <label>Place of Birth</label>
+                  <input type="text" name="dog_place_of_birth" value="{{ dog.dog_place_of_birth or '' }}">
+                </div>
+              </div>
+            </fieldset>
+            <div style="margin-top:0.75rem; display:flex; gap:0.5rem;">
+              <button type="submit" class="btn btn-primary btn-sm">Save Changes</button>
+              <button type="button" class="btn btn-secondary btn-sm"
+                      onclick="document.getElementById('edit-dog-{{ dog.id }}').open = false;">Cancel</button>
+            </div>
+          </form>
+        </details>
+      </div>
+    {% endfor %}
+  {% else %}
+    <p style="color:#777; font-style:italic;">No dogs saved yet.</p>
+  {% endif %}
+
+  <details style="margin-top:1rem;">
+    <summary style="cursor:pointer; display:inline-block; padding:0.4rem 0.9rem; background:#e8f4e8; border:1px solid #2c6e2e; border-radius:4px; color:#2c6e2e; font-weight:600; list-style:none; user-select:none;">
+      + Add a Dog
+    </summary>
+    <form method="post" action="/auth/dogs/add" style="margin-top:1rem; padding:1.25rem; border:1px solid #ddd; border-radius:6px; background:#fafafa;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem 1rem;">
+        <div class="form-group" style="grid-column:1/-1;">
+          <label>Registered Name <span class="required">*</span></label>
+          <input type="text" name="dog_name" required>
+        </div>
+        <div class="form-group">
+          <label>Call Name <span class="form-hint">(optional)</span></label>
+          <input type="text" name="dog_call_name">
+        </div>
+        <div class="form-group">
+          <label>Breed</label>
+          <input type="text" name="dog_breed">
+        </div>
+        <div class="form-group">
+          <label>Sex</label>
+          <select name="dog_sex">
+            <option value="">— select —</option>
+            <option value="M">Male</option>
+            <option value="F">Female</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Date of Birth <span class="form-hint">(optional)</span></label>
+          <input type="date" name="dog_dob">
+        </div>
+        <div class="form-group">
+          <label>Sire <span class="form-hint">(optional)</span></label>
+          <input type="text" name="dog_sire">
+        </div>
+        <div class="form-group">
+          <label>Dam <span class="form-hint">(optional)</span></label>
+          <input type="text" name="dog_dam">
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label>Breeder <span class="form-hint">(optional)</span></label>
+          <input type="text" name="dog_breeder">
+        </div>
+      </div>
+
+      <fieldset style="margin-top:0.75rem;">
+        <legend style="font-size:0.9rem; font-weight:600;">AKC Information <span class="form-hint">(optional)</span></legend>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem 1rem;">
+          <div class="form-group">
+            <label>Registration Type</label>
+            <select name="akc_number_type" id="add-akc-num-type">
+              <option value="">— none —</option>
+              <option value="AKC">AKC Number</option>
+              <option value="PAL_ILP">PAL/ILP Number</option>
+              <option value="Foreign">Foreign</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Registration Number</label>
+            <input type="text" name="akc_registration_number">
+          </div>
+          <div class="form-group" id="add-foreign-country" style="display:none;">
+            <label>Country of Origin</label>
+            <input type="text" name="akc_foreign_country">
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset style="margin-top:0.75rem;">
+        <legend style="font-size:0.9rem; font-weight:600;">AHBA Information <span class="form-hint">(optional)</span></legend>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem 1rem;">
+          <div class="form-group">
+            <label>Registry &amp; Number <span class="form-hint">(e.g. AHBA 12345)</span></label>
+            <input type="text" name="ahba_registration_number">
+          </div>
+          <div class="form-group">
+            <label>Place of Birth <span class="form-hint">(optional)</span></label>
+            <input type="text" name="dog_place_of_birth">
+          </div>
+        </div>
+      </fieldset>
+
+      <button type="submit" class="btn btn-primary" style="margin-top:1rem;">Save Dog</button>
+    </form>
+  </details>
+</section>
+
+<style>
+  .required { color: #c0392b; }
+  .form-hint { font-weight: normal; color: #777; font-size: 0.88em; }
+  .btn-link { background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline; }
+  details > summary::-webkit-details-marker { display: none; }
+</style>
 {% endblock %}
 
 {% block scripts %}
@@ -86,5 +305,22 @@
   }
   countryEl.addEventListener('change', toggleState);
   toggleState();
+
+  // Show/hide foreign country field in add-dog form
+  var addAkcType = document.getElementById('add-akc-num-type');
+  var addForeignCountry = document.getElementById('add-foreign-country');
+  if (addAkcType) {
+    addAkcType.addEventListener('change', function() {
+      addForeignCountry.style.display = this.value === 'Foreign' ? '' : 'none';
+    });
+  }
+
+  // Show/hide foreign country field in each edit-dog form
+  document.querySelectorAll('.edit-akc-num-type').forEach(function(sel) {
+    sel.addEventListener('change', function() {
+      var target = document.getElementById(this.dataset.target);
+      if (target) target.style.display = this.value === 'Foreign' ? '' : 'none';
+    });
+  });
 </script>
 {% endblock %}

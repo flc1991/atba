@@ -1,0 +1,24 @@
+AHBA TRIAL ENTRY CONFIRMED
+{{ event.title }}
+
+Dear {{ entry.handler_name }},
+
+Your AHBA trial entry has been received and payment confirmed.
+
+Dog: {{ entry.dog_name }}{% if entry.dog_breed %} ({{ entry.dog_breed }}){% endif %}
+
+{% if entry.dog_registration_number %}Registration Number: {{ entry.dog_registration_number }}
+{% endif %}Handler: {{ entry.handler_name }}
+Total Paid: ${{ "%.2f" | format(entry.total_fee_cents / 100) }}
+
+AHBA CLASS ENTRIES:
+{% for sel in selections %}
+  {{ sel.event_name }} — {{ sel.class_name }} — Call #: {{ sel.call_number if sel.call_number else 'TBA' }}
+{% endfor %}
+
+AHBA registration remains open until the day of the trial. Call numbers and running
+order will be sent once entries close.
+
+Thank you,
+ATBA Trial Secretary
+{{ base_url }}

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Registration Confirmed — {{ event.title }}{% endblock %}
+
+{% block content %}
+<div style="max-width:600px; margin:2rem auto; text-align:center;">
+  <div style="font-size:3rem; margin-bottom:1rem;">&#10003;</div>
+  <h1>You're registered!</h1>
+  <h2>{{ event.title }}</h2>
+  <p style="color:#555; margin-bottom:2rem;">{{ event.start_date.strftime('%B %d, %Y') }}</p>
+
+  <div class="card" style="text-align:left; padding:1.5rem; background:#f9f9f9; border-radius:6px; margin-bottom:2rem;">
+    <h3 style="margin-top:0;">Registration Summary</h3>
+    <table style="width:100%; border-collapse:collapse;">
+      <tr>
+        <td style="padding:0.4rem 0; color:#666; width:40%;">Name</td>
+        <td style="padding:0.4rem 0;"><strong>{{ registration.name }}</strong></td>
+      </tr>
+      {% if registration_dogs %}
+        {% for rd in registration_dogs %}
+        <tr>
+          <td style="padding:0.4rem 0; color:#666;">{{ "Dog" if loop.first else "" }}</td>
+          <td style="padding:0.4rem 0;">
+            <strong>{{ rd.dog_name }}</strong>
+            {% if rd.dog_breed %} — {{ rd.dog_breed }}{% endif %}
+            {% if rd.entries %}
+              <ul style="margin:0.25rem 0 0; padding-left:1.25rem; font-size:0.88em; color:#555;">
+              {% for name, judged in rd.entries %}
+                <li>{{ name }} <span style="color:#888;">({{ 'judged' if judged else 'unjudged' }})</span></li>
+              {% endfor %}
+              </ul>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      {% else %}
+        <tr>
+          <td style="padding:0.4rem 0; color:#666;">Dog</td>
+          <td style="padding:0.4rem 0;"><strong>{{ registration.dog_name }}</strong></td>
+        </tr>
+      {% endif %}
+      <tr>
+        <td style="padding:0.4rem 0; color:#666;">Email</td>
+        <td style="padding:0.4rem 0;">{{ registration.email }}</td>
+      </tr>
+      <tr>
+        <td style="padding:0.4rem 0; color:#666;">Rate</td>
+        <td style="padding:0.4rem 0;">{{ registration.pricing_tier | replace('_', ' ') | title }}</td>
+      </tr>
+      <tr>
+        <td style="padding:0.4rem 0; color:#666;">Amount paid</td>
+        <td style="padding:0.4rem 0;"><strong>${{ "%.2f" | format(registration.fee_cents / 100) }}</strong></td>
+      </tr>
+    </table>
+  </div>
+
+  <p style="color:#555;">A confirmation email will be sent to <strong>{{ registration.email }}</strong>.</p>
+
+  <div style="margin-top:2rem;">
+    <a href="/events" class="btn btn-secondary">Back to Events</a>
+    {% if current_user %}
+      &nbsp;
+      <a href="/auth/entries" class="btn btn-secondary">My Registrations</a>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,304 @@
+{% extends "base.html" %}
+{% block title %}AHBA Trial Entry — {{ event.title }}{% endblock %}
+
+{% block content %}
+<h1>AHBA Herding Trial Entry</h1>
+<h2>{{ event.title }} &mdash; {{ event.end_date.strftime('%B %d, %Y') }}</h2>
+
+<form method="post" action="/events/{{ event.id }}/trial/enter/ahba" id="entry-form" style="max-width:680px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  {# ---- Event Selections ---- #}
+  <fieldset>
+    <legend>Event Selections</legend>
+    <p style="font-size:0.9rem; color:#555;">
+      Select a class for trial events (I, II, III) or check the box for JHD test classes.
+    </p>
+
+    {% if trial_events %}
+      <table style="width:100%; border-collapse:collapse; font-size:0.95rem;">
+        <thead>
+          <tr style="border-bottom:2px solid #2c6e2e; text-align:left;">
+            <th style="padding:0.4rem 0.5rem;">Event</th>
+            <th style="padding:0.4rem 0.5rem;">Class / Enter</th>
+            <th style="padding:0.4rem 0.5rem; text-align:right;">Fee</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for te in trial_events %}
+            <tr class="te-row"
+                data-te-id="{{ te.id }}"
+                data-fee="{{ te.fee_cents }}"
+                data-is-test="{{ 'true' if te.is_test_class else 'false' }}"
+                style="border-bottom:1px solid #eee;">
+              <td style="padding:0.5rem;"><strong>{{ te.name }}</strong></td>
+              <td style="padding:0.5rem;">
+                {% if te.is_test_class %}
+                  <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer;">
+                    <input type="checkbox" name="enter_te_{{ te.id }}" value="1"
+                           class="te-enter-check"
+                           {% if form_data.get('enter_te_' ~ te.id|string) %}checked{% endif %}>
+                    Enter
+                  </label>
+                {% else %}
+                  <select name="class_{{ te.id }}" class="class-select" style="max-width:120px;">
+                    <option value="">— no entry —</option>
+                    {% for cls in te_classes_map[te.id] %}
+                      <option value="{{ cls.id }}"
+                        {% if form_data.get('class_' ~ te.id|string) == cls.id|string %}selected{% endif %}>
+                        {{ cls.name }}
+                      </option>
+                    {% endfor %}
+                  </select>
+                {% endif %}
+              </td>
+              <td style="padding:0.5rem; text-align:right; white-space:nowrap;">
+                ${{ "%.2f" | format(te.fee_cents / 100) }}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p><em>No events have been configured for this trial yet.</em></p>
+    {% endif %}
+
+    <div style="margin-top:1rem; padding:0.75rem 1rem; background:#f0f8ff; border-left:4px solid #2980b9; border-radius:4px;">
+      <strong>Total due: $<span id="total-display">0.00</span></strong>
+    </div>
+  </fieldset>
+
+  {# ---- Owner Information ---- #}
+  <fieldset>
+    <legend>Actual Owner Information</legend>
+    <div class="form-group">
+      <label for="handler_name">Owner's full name <span class="required">*</span></label>
+      <input type="text" id="handler_name" name="handler_name" required
+             value="{{ form_data.handler_name or '' }}">
+    </div>
+    <div class="form-group">
+      <label for="address_line1">Street address <span class="required">*</span></label>
+      <input type="text" id="address_line1" name="address_line1"
+             value="{{ form_data.address_line1 or '' }}">
+    </div>
+    <div class="form-group">
+      <label for="address_line2">Apt / Suite <span class="form-hint">(optional)</span></label>
+      <input type="text" id="address_line2" name="address_line2"
+             value="{{ form_data.address_line2 or '' }}">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="city">City <span class="required">*</span></label>
+        <input type="text" id="city" name="city" value="{{ form_data.city or '' }}">
+      </div>
+      <div class="form-group" id="state-group">
+        <label for="state_province">State / Province</label>
+        <input type="text" id="state_province" name="state_province"
+               value="{{ form_data.state_province or '' }}">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="postal_code">Postal code</label>
+        <input type="text" id="postal_code" name="postal_code"
+               value="{{ form_data.postal_code or '' }}">
+      </div>
+      <div class="form-group">
+        <label for="country">Country <span class="required">*</span></label>
+        <select id="country" name="country">
+          {% for code, name in countries %}
+            <option value="{{ code }}"
+              {% if (form_data.country or 'US') == code %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="handler_phone">Phone <span class="required">*</span></label>
+        <input type="tel" id="handler_phone" name="handler_phone"
+               value="{{ form_data.handler_phone or '' }}">
+      </div>
+      <div class="form-group">
+        <label for="handler_email">Email <span class="required">*</span></label>
+        <input type="email" id="handler_email" name="handler_email" required
+               value="{{ form_data.handler_email or '' }}">
+      </div>
+    </div>
+  </fieldset>
+
+  {# ---- Agent (optional) ---- #}
+  <fieldset>
+    <legend>Agent <span class="form-hint">(optional — if submitting on behalf of owner)</span></legend>
+    <div class="form-group">
+      <label for="ahba_agent_name">Agent name <span class="form-hint">(optional)</span></label>
+      <input type="text" id="ahba_agent_name" name="ahba_agent_name"
+             value="{{ form_data.ahba_agent_name or '' }}">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="ahba_agent_phone">Agent phone <span class="form-hint">(optional)</span></label>
+        <input type="tel" id="ahba_agent_phone" name="ahba_agent_phone"
+               value="{{ form_data.ahba_agent_phone or '' }}">
+      </div>
+      <div class="form-group">
+        <label for="ahba_agent_email">Agent email <span class="form-hint">(optional)</span></label>
+        <input type="email" id="ahba_agent_email" name="ahba_agent_email"
+               value="{{ form_data.ahba_agent_email or '' }}">
+      </div>
+    </div>
+  </fieldset>
+
+  {# ---- Dog Information ---- #}
+  <fieldset>
+    <legend>Dog Information</legend>
+
+    {% if saved_dogs %}
+    <div class="form-group" style="margin-bottom:1rem; padding:0.75rem; background:#f0f8ff; border-left:4px solid #2980b9; border-radius:4px;">
+      <label for="dog-selector" style="font-weight:600;">Load a saved dog:</label>
+      <select id="dog-selector" style="margin-top:0.25rem;">
+        <option value="">— select a dog —</option>
+        {% for d in saved_dogs %}
+          <option value="{{ d.id }}"
+            data-dog-name="{{ d.dog_name or '' }}"
+            data-breed="{{ d.dog_breed or '' }}"
+            data-sex="{{ d.dog_sex or '' }}"
+            data-sire="{{ d.dog_sire or '' }}"
+            data-dam="{{ d.dog_dam or '' }}"
+            data-breeder="{{ d.dog_breeder or '' }}"
+            data-ahba-num="{{ d.ahba_registration_number or '' }}"
+            data-place-of-birth="{{ d.dog_place_of_birth or '' }}"
+          >{{ d.dog_name }}{% if d.dog_breed %} — {{ d.dog_breed }}{% endif %}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+
+    <div class="form-group">
+      <label for="dog_name">Dog's full registered name <span class="required">*</span></label>
+      <input type="text" id="dog_name" name="dog_name" required
+             value="{{ form_data.dog_name or '' }}">
+    </div>
+    <div class="form-group">
+      <label for="dog_registration_number">
+        Registry type and number <span class="required">*</span>
+        <span class="form-hint">(e.g., "AKC DN12345678" or "AHBA 12345")</span>
+      </label>
+      <input type="text" id="dog_registration_number" name="dog_registration_number"
+             value="{{ form_data.dog_registration_number or '' }}">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="dog_sex">Sex <span class="required">*</span></label>
+        <select id="dog_sex" name="dog_sex">
+          <option value="">— select —</option>
+          <option value="M" {% if form_data.get('dog_sex') == 'M' %}selected{% endif %}>Male</option>
+          <option value="F" {% if form_data.get('dog_sex') == 'F' %}selected{% endif %}>Female</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="dog_place_of_birth">Place of birth <span class="form-hint">(optional)</span></label>
+        <input type="text" id="dog_place_of_birth" name="dog_place_of_birth"
+               value="{{ form_data.dog_place_of_birth or '' }}">
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="dog_breed">Breed variety <span class="required">*</span></label>
+      <input type="text" id="dog_breed" name="dog_breed"
+             value="{{ form_data.dog_breed or '' }}">
+    </div>
+    <div class="form-group">
+      <label for="dog_breeder">Breeder <span class="form-hint">(optional)</span></label>
+      <input type="text" id="dog_breeder" name="dog_breeder" value="{{ form_data.dog_breeder or '' }}">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="dog_sire">Sire <span class="form-hint">(optional)</span></label>
+        <input type="text" id="dog_sire" name="dog_sire" value="{{ form_data.dog_sire or '' }}">
+      </div>
+      <div class="form-group">
+        <label for="dog_dam">Dam <span class="form-hint">(optional)</span></label>
+        <input type="text" id="dog_dam" name="dog_dam" value="{{ form_data.dog_dam or '' }}">
+      </div>
+    </div>
+
+    {% if current_user %}
+    <div class="form-group" style="margin-top:0.5rem;">
+      <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;">
+        <input type="checkbox" name="save_dog" value="1">
+        Save this dog to my account for future entries
+      </label>
+    </div>
+    {% endif %}
+  </fieldset>
+
+  {# ---- Signature & Submit ---- #}
+  <fieldset>
+    <legend>Signature</legend>
+
+    <div class="form-group">
+      <label for="signature">
+        Signature (type your full name) <span class="required">*</span>
+        <span class="form-hint"> — Owner or authorized agent. I certify the above information is correct and I agree to abide by AHBA rules.</span>
+      </label>
+      <input type="text" id="signature" name="signature"
+             value="{{ form_data.signature or '' }}">
+    </div>
+
+    <button type="submit" id="submit-btn" class="btn btn-primary" style="margin-top:1rem; font-size:1.05em;">
+      Continue to PayPal
+    </button>
+  </fieldset>
+</form>
+
+<style>
+  .required { color: #c0392b; }
+  .form-hint { font-weight: normal; color: #777; font-size: 0.88em; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  window.trialFormConfig = {
+    eventId: {{ event.id }},
+    formId: 'entry-form',
+    submitBtnId: 'submit-btn',
+    hasEventPref: false,
+  };
+</script>
+<script src="{{ url_for('static', path='js/trial_form.js') }}"></script>
+<script>
+  // Dog selector pre-fill
+  var dogSelector = document.getElementById('dog-selector');
+  if (dogSelector) {
+    dogSelector.addEventListener('change', function() {
+      var opt = this.options[this.selectedIndex];
+      if (!opt || !opt.value) return;
+      var d = opt.dataset;
+      var setVal = function(id, val) {
+        var el = document.getElementById(id);
+        if (el) el.value = val || '';
+      };
+      setVal('dog_name', d.dogName);
+      setVal('dog_breed', d.breed);
+      setVal('dog_place_of_birth', d.placeOfBirth);
+      setVal('dog_registration_number', d.ahbaNum);
+      setVal('dog_sire', d.sire);
+      setVal('dog_dam', d.dam);
+      setVal('dog_breeder', d.breeder);
+      var sexSel = document.getElementById('dog_sex');
+      if (sexSel) sexSel.value = d.sex || '';
+    });
+  }
+
+  // Country/state toggle
+  var countryEl = document.getElementById('country');
+  var stateGroup = document.getElementById('state-group');
+  function toggleState() {
+    var noState = ['AE','AP','AQ','BN','HK','KW','MO','MY','SG'];
+    stateGroup.style.display = noState.includes(countryEl.value) ? 'none' : '';
+  }
+  countryEl.addEventListener('change', toggleState);
+  toggleState();
+</script>
+{% endblock %}

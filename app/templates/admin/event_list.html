@@ -1,0 +1,41 @@
+{% extends "admin/base.html" %}
+{% block title %}Events — Admin{% endblock %}
+
+{% block admin_content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+  <h1 style="margin:0;">Events</h1>
+  <a href="/admin/events/new" class="btn btn-primary">+ New Event</a>
+</div>
+
+{% if events %}
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th><th>Title</th><th>Type</th><th>Published</th><th>Deleted</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for event in events %}
+        <tr>
+          <td style="white-space:nowrap;">{{ event.start_date.strftime('%b %d, %Y') }}</td>
+          <td>{{ event.title }}</td>
+          <td>{{ event.event_type | replace('_',' ') | title }}</td>
+          <td>{{ '✓' if event.is_published else '—' }}</td>
+          <td>{{ '✓' if event.is_deleted else '—' }}</td>
+          <td style="white-space:nowrap;">
+            <a href="/admin/events/{{ event.id }}/edit" class="btn btn-secondary btn-sm">Edit</a>
+            {% if event.event_type == 'trial' %}
+              <a href="/admin/events/{{ event.id }}/trial-entries" class="btn btn-secondary btn-sm">Entries</a>
+              <a href="/admin/events/{{ event.id }}/call-numbers" class="btn btn-secondary btn-sm">Call #s</a>
+            {% elif event.event_type in ('fun_run','smart_dog_day') %}
+              <a href="/admin/events/{{ event.id }}/registrations" class="btn btn-secondary btn-sm">Regs</a>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <p>No events found.</p>
+{% endif %}
+{% endblock %}

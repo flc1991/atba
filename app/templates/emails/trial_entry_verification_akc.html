@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>AKC Trial Entry Confirmation</title></head>
+<body style="font-family:Arial,sans-serif; max-width:600px; margin:0 auto; color:#333;">
+  <div style="background:#1a5c2a; color:#fff; padding:1.5rem 2rem;">
+    <h1 style="margin:0; font-size:1.4rem;">AKC Trial Entry Confirmed</h1>
+    <p style="margin:0.25rem 0 0; opacity:0.85;">{{ event.title }}</p>
+  </div>
+
+  <div style="padding:1.5rem 2rem;">
+    <p>Dear {{ entry.handler_name }},</p>
+    <p>
+      Your entry for the <strong>{{ event.title }}</strong> AKC Herding Trial
+      ({{ event.start_date.strftime('%B %d, %Y') }}) has been received and payment confirmed.
+    </p>
+
+    <table style="width:100%; border-collapse:collapse; margin:1rem 0;">
+      <tr style="background:#f5f5f5;">
+        <td style="padding:0.5rem; font-weight:bold;">Dog</td>
+        <td style="padding:0.5rem;">{{ entry.dog_name }}{% if entry.dog_breed %} ({{ entry.dog_breed }}){% endif %}</td>
+      </tr>
+      {% if entry.dog_registration_number %}
+      <tr>
+        <td style="padding:0.5rem; font-weight:bold;">Reg. Number</td>
+        <td style="padding:0.5rem;">{{ entry.dog_registration_number }}</td>
+      </tr>
+      {% endif %}
+      <tr style="background:#f5f5f5;">
+        <td style="padding:0.5rem; font-weight:bold;">Handler</td>
+        <td style="padding:0.5rem;">{{ entry.handler_name }}</td>
+      </tr>
+      <tr>
+        <td style="padding:0.5rem; font-weight:bold;">Total Paid</td>
+        <td style="padding:0.5rem;">${{ "%.2f" | format(entry.total_fee_cents / 100) }}</td>
+      </tr>
+    </table>
+
+    <h3 style="color:#1a5c2a;">AKC Class Entries</h3>
+    <table style="width:100%; border-collapse:collapse;">
+      <thead>
+        <tr style="background:#1a5c2a; color:#fff;">
+          <th style="padding:0.5rem; text-align:left;">Event</th>
+          <th style="padding:0.5rem; text-align:left;">Class</th>
+          <th style="padding:0.5rem; text-align:left;">Call #</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for sel in selections %}
+          <tr style="border-bottom:1px solid #eee;">
+            <td style="padding:0.5rem;">{{ sel.event_name }}</td>
+            <td style="padding:0.5rem;">{{ sel.class_name }}</td>
+            <td style="padding:0.5rem;">{{ sel.call_number if sel.call_number else 'TBA' }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <p style="margin-top:1.5rem; font-size:0.9rem; color:#666;">
+      Call numbers will be assigned after the entry period closes and a schedule will be sent.
+      If you have questions, reply to this email.
+    </p>
+
+    <p>Thank you,<br><strong>ATBA Trial Secretary</strong></p>
+  </div>
+
+  <div style="background:#f5f5f5; padding:1rem 2rem; font-size:0.8rem; color:#888;">
+    American Tending Breeds Association &bull; <a href="{{ base_url }}">atba-herding.org</a>
+  </div>
+</body>
+</html>

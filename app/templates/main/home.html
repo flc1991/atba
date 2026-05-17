@@ -43,7 +43,9 @@
             {% endif %}
           </div>
           <div class="event-card-footer">
-            <a href="/events/{{ event.id }}" class="btn btn-primary btn-sm">Details &amp; Register</a>
+            <a href="/events/{{ event.id }}" class="btn btn-primary btn-sm">
+              {% if event.requires_registration %}Details &amp; Register{% else %}Details{% endif %}
+            </a>
           </div>
         </div>
       {% endfor %}

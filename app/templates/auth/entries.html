@@ -38,6 +38,7 @@
                   <span style="color:green;">&#10003; Paid</span>
                 {% else %}
                   <span style="color:#c0392b;">Pending payment</span>
+                  <br><a href="/payments/checkout/entry/{{ entry.id }}" class="btn btn-primary btn-sm" style="margin-top:0.25rem;">Pay Now</a>
                 {% endif %}
               </td>
             </tr>
@@ -70,6 +71,7 @@
                   <span style="color:green;">&#10003; Paid</span>
                 {% else %}
                   <span style="color:#c0392b;">Pending payment</span>
+                  <br><a href="/payments/checkout/registration/{{ reg.id }}" class="btn btn-primary btn-sm" style="margin-top:0.25rem;">Pay Now</a>
                 {% endif %}
               </td>
             </tr>

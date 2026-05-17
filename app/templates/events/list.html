@@ -4,6 +4,15 @@
 {% block content %}
 <h1>Events &amp; Schedule</h1>
 
+<p style="margin-bottom:1.25rem; padding:0.6rem 1rem; background:#eafaf1; border-left:4px solid #2c6e2e; border-radius:4px;">
+  All events are held at <strong>Raspberry Ridge Sheep Farm, Bangor, PA</strong>.
+</p>
+
+{% macro short_desc(text) -%}
+  {% set words = (text or '').split() -%}
+  {{ words[:10] | join(' ') }}{% if words | length > 10 %}…{% endif %}
+{%- endmacro %}
+
 {% if events %}
   <div class="table-wrapper">
     <table>
@@ -11,8 +20,7 @@
         <tr>
           <th>Date</th>
           <th>Event</th>
-          <th>Location</th>
-          <th>Type</th>
+          <th>Description</th>
           <th></th>
         </tr>
       </thead>
@@ -28,8 +36,7 @@
               {% endif %}
             </td>
             <td><a href="/events/{{ event.id }}">{{ event.title }}</a></td>
-            <td>{{ event.location or '' }}</td>
-            <td>{{ event.event_type | replace('_', ' ') | title }}</td>
+            <td>{{ short_desc(event.description) }}</td>
             <td><a href="/events/{{ event.id }}" class="btn btn-primary btn-sm">Details</a></td>
           </tr>
         {% endfor %}
@@ -38,5 +45,38 @@
   </div>
 {% else %}
   <p>No upcoming events found. Check back soon!</p>
+{% endif %}
+
+{% if past_events %}
+  <h2 style="margin-top:2.5rem;">Past Events</h2>
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Event</th>
+          <th>Description</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for event in past_events %}
+          <tr>
+            <td style="white-space:nowrap;">
+              {{ event.start_date.strftime('%b %d') }}
+              {% if event.start_date != event.end_date %}
+                &ndash; {{ event.end_date.strftime('%b %d, %Y') }}
+              {% else %}
+                , {{ event.start_date.strftime('%Y') }}
+              {% endif %}
+            </td>
+            <td><a href="/events/{{ event.id }}">{{ event.title }}</a></td>
+            <td>{{ short_desc(event.description) }}</td>
+            <td><a href="/events/{{ event.id }}" class="btn btn-secondary btn-sm">Details</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 {% endif %}
 {% endblock %}

@@ -1,0 +1,64 @@
+{% extends "admin/base.html" %}
+{% block title %}{% if member %}Edit Member{% else %}New Member{% endif %} — Admin{% endblock %}
+
+{% block admin_content %}
+<h1>{% if member %}Edit Member{% else %}New Member{% endif %}</h1>
+<p><a href="/admin/members">&larr; Members</a></p>
+
+<form method="post"
+      action="{% if member %}/admin/members/{{ member.id }}/edit{% else %}/admin/members/new{% endif %}"
+      style="max-width:480px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  <div class="form-group">
+    <label for="name">Full name</label>
+    <input type="text" id="name" name="name" required value="{{ form_data.name or '' }}">
+  </div>
+  <div class="form-group">
+    <label for="email">Email <span class="form-hint">(optional)</span></label>
+    <input type="email" id="email" name="email" value="{{ form_data.email or '' }}">
+  </div>
+  <div class="form-row">
+    <div class="form-group">
+      <label for="membership_year">Membership year</label>
+      <input type="number" id="membership_year" name="membership_year" required
+             value="{{ form_data.membership_year or current_year }}" min="2000" max="2099">
+    </div>
+    <div class="form-group">
+      <label for="user_id">Linked account <span class="form-hint">(optional)</span></label>
+      <select id="user_id" name="user_id">
+        <option value="">— None —</option>
+        {% for u in users %}
+          <option value="{{ u.id }}"
+            {% if form_data.user_id|string == u.id|string %}selected{% endif %}>
+            {{ u.name }} ({{ u.email }})
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+  <div class="form-group">
+    <label for="address_line1">Street address</label>
+    <input type="text" id="address_line1" name="address_line1" value="{{ form_data.address_line1 or '' }}">
+  </div>
+  <div class="form-row">
+    <div class="form-group">
+      <label for="city">City</label>
+      <input type="text" id="city" name="city" value="{{ form_data.city or '' }}">
+    </div>
+    <div class="form-group">
+      <label for="postal_code">Postal code</label>
+      <input type="text" id="postal_code" name="postal_code" value="{{ form_data.postal_code or '' }}">
+    </div>
+  </div>
+  <div class="form-group">
+    <label for="country">Country</label>
+    <input type="text" id="country" name="country" value="{{ form_data.country or 'US' }}" maxlength="2">
+  </div>
+
+  <div style="margin-top:1rem;">
+    <button type="submit" class="btn btn-primary">{% if member %}Save{% else %}Add Member{% endif %}</button>
+    <a href="/admin/members" class="btn btn-secondary" style="margin-left:0.5rem;">Cancel</a>
+  </div>
+</form>
+{% endblock %}

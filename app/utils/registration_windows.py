@@ -48,9 +48,14 @@ def _ensure_utc(dt: datetime) -> datetime:
 
 
 def get_trial_status(reg_close_dt: datetime | None) -> str:
-    """Return 'open' or 'closed' based on the current UTC time."""
+    """
+    Return one of 'not_yet_open', 'open', or 'closed'.
+
+    A null reg_close_dt means the admin has not yet opened registration for this trial
+    (e.g., events scheduled far in the future where the form/fees aren't finalized).
+    """
     if reg_close_dt is None:
-        return "open"
+        return "not_yet_open"
     return "open" if datetime.now(UTC) < _ensure_utc(reg_close_dt) else "closed"
 
 

@@ -27,12 +27,16 @@
     {% for trial in trials %}
       <div class="trial-section" style="margin-bottom:1.5rem;">
         <h3>{{ trial.governing_body }} Trial
-          {% if trial.akc_event_number %} — Event #{{ trial.akc_event_number }}{% endif %}
+          {% if trial.akc_event_number %}
+            — Event #{{ trial.akc_event_number }}{% if trial.akc_event_number_2 %} &amp; #{{ trial.akc_event_number_2 }}{% endif %}
+          {% endif %}
         </h3>
 
         {% set status = trial_statuses[trial.id] %}
         {% if status == 'closed' %}
           <p><strong style="color:#c0392b;">Registration for this trial is now closed.</strong></p>
+        {% elif status == 'not_yet_open' %}
+          <p><strong style="color:#7a6500;">Registration is not yet open.</strong> Check back closer to the event.</p>
         {% else %}
           <p>Registration is open.</p>
         {% endif %}
@@ -42,8 +46,8 @@
           <ul>
             {% for te in trial_events_map[trial.id] %}
               <li>
-                <strong>{{ te.name }}</strong>:
-                {% for cls in te_classes_map[te.id] %}{{ cls.name }}{% if not loop.last %}, {% endif %}{% endfor %}
+                <strong>{{ te.name }}</strong>{% if te_classes_map[te.id] %}:
+                {% for cls in te_classes_map[te.id] %}{{ cls.name }}{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}
               </li>
             {% endfor %}
           </ul>
@@ -63,12 +67,27 @@
       </div>
     {% endfor %}
 
-    {# Entry button — only if at least one trial is still open #}
-    {% if any_trial_open %}
-      <a href="/events/{{ event.id }}/trial/enter" class="btn btn-primary">Enter This Trial Weekend</a>
-    {% else %}
-      <p><em>All trial registrations are closed.</em></p>
-    {% endif %}
+    {# Entry buttons — separate for AKC and AHBA #}
+    <div style="margin-top:1rem;">
+      {% if akc_status == 'open' %}
+        <a href="/events/{{ event.id }}/trial/enter/akc" class="btn btn-primary" style="margin-right:0.75rem;">
+          Enter AKC Trial
+        </a>
+      {% else %}
+        <span class="btn btn-secondary" style="opacity:0.5; cursor:not-allowed; margin-right:0.75rem;">
+          {% if akc_status == 'not_yet_open' %}AKC Registration Not Yet Open{% else %}AKC Registration Closed{% endif %}
+        </span>
+      {% endif %}
+      {% if ahba_status == 'open' %}
+        <a href="/events/{{ event.id }}/trial/enter/ahba" class="btn btn-primary">
+          Enter AHBA Trial
+        </a>
+      {% else %}
+        <span class="btn btn-secondary" style="opacity:0.5; cursor:not-allowed;">
+          {% if ahba_status == 'not_yet_open' %}AHBA Registration Not Yet Open{% else %}AHBA Registration Closed{% endif %}
+        </span>
+      {% endif %}
+    </div>
   </section>
 
 {# ---- Fun Run / Smart Dog Day ---- #}
@@ -91,7 +110,7 @@
     </table>
 
     {% if event.pre_entry_close_dt %}
-      <p>Pre-entry closes: <strong>{{ event.pre_entry_close_dt.strftime('%B %d, %Y at %-I:%M %p') }} ET</strong></p>
+      <p>Pre-entry closes: <strong>{{ event.pre_entry_close_dt.strftime('%B %d, %Y at %I:%M %p') }} ET</strong></p>
     {% endif %}
 
     <a href="/events/{{ event.id }}/register/{{ route }}" class="btn btn-primary" style="margin-top:1rem;">Register</a>

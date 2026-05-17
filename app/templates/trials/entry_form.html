@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block title %}Trial Entry — {{ event.title }}{% endblock %}
+
+{% block content %}
+<h1>Trial Entry Form</h1>
+<h2>{{ event.title }} &mdash; {{ event.start_date.strftime('%B %d, %Y') }}</h2>
+
+{% for trial in trials %}
+  {% if trial_statuses[trial.id] == 'closed' %}
+    <div style="padding:0.75rem 1rem; margin-bottom:1rem; background:#fdf2f2; border-left:4px solid #e74c3c; border-radius:4px;">
+      <strong>{{ trial.governing_body }} Trial:</strong> Registration is closed.
+    </div>
+  {% endif %}
+{% endfor %}
+
+<form method="post" action="/events/{{ event.id }}/trial/enter" id="entry-form" style="max-width:640px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  {# Handler Information #}
+  <fieldset>
+    <legend>Handler Information</legend>
+    <div class="form-group">
+      <label for="handler_name">Full name</label>
+      <input type="text" id="handler_name" name="handler_name" required
+             value="{{ form_data.handler_name or '' }}">
+    </div>
+    <div class="form-group">
+      <label for="handler_email">Email address</label>
+      <input type="email" id="handler_email" name="handler_email" required
+             value="{{ form_data.handler_email or '' }}">
+    </div>
+    <div class="form-group">
+      <label for="handler_phone">Phone <span class="form-hint">(optional)</span></label>
+      <input type="tel" id="handler_phone" name="handler_phone"
+             value="{{ form_data.handler_phone or '' }}">
+    </div>
+    <div class="form-group">
+      <label for="address_line1">Street address</label>
+      <input type="text" id="address_line1" name="address_line1"
+             value="{{ form_data.address_line1 or '' }}">
+    </div>
+    <div class="form-group">
+      <label for="address_line2">Apt / Suite <span class="form-hint">(optional)</span></label>
+      <input type="text" id="address_line2" name="address_line2"
+             value="{{ form_data.address_line2 or '' }}">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="city">City</label>
+        <input type="text" id="city" name="city" value="{{ form_data.city or '' }}">
+      </div>
+      <div class="form-group" id="state-group">
+        <label for="state_province">State / Province</label>
+        <input type="text" id="state_province" name="state_province"
+               value="{{ form_data.state_province or '' }}">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="postal_code">Postal code</label>
+        <input type="text" id="postal_code" name="postal_code"
+               value="{{ form_data.postal_code or '' }}">
+      </div>
+      <div class="form-group">
+        <label for="country">Country</label>
+        <select id="country" name="country">
+          {% for code, name in countries %}
+            <option value="{{ code }}"
+              {% if (form_data.country or 'US') == code %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </fieldset>
+
+  {# Dog Information #}
+  <fieldset>
+    <legend>Dog Information</legend>
+    <div class="form-group">
+      <label for="dog_name">Dog's registered name</label>
+      <input type="text" id="dog_name" name="dog_name" required
+             value="{{ form_data.dog_name or '' }}">
+    </div>
+    <div class="form-group">
+      <label for="dog_breed">Breed <span class="form-hint">(optional)</span></label>
+      <input type="text" id="dog_breed" name="dog_breed"
+             value="{{ form_data.dog_breed or '' }}">
+    </div>
+    <div class="form-group">
+      <label for="dog_registration_number">Registration number <span class="form-hint">(AKC/AHBA — optional)</span></label>
+      <input type="text" id="dog_registration_number" name="dog_registration_number"
+             value="{{ form_data.dog_registration_number or '' }}">
+    </div>
+  </fieldset>
+
+  {# Class selections — one fieldset per trial #}
+  {% for trial in trials %}
+    {% set status = trial_statuses[trial.id] %}
+    <fieldset class="trial-section"
+              data-trial-id="{{ trial.id }}"
+              data-fee="0"
+              data-status="{{ status }}">
+      <legend>
+        {{ trial.governing_body }} Trial
+        {% if trial.akc_event_number %} — Event #{{ trial.akc_event_number }}{% endif %}
+        &mdash; see individual event fees
+      </legend>
+
+      {% if status == 'closed' %}
+        <p style="color:#c0392b; margin:0;"><em>Registration for this trial is closed.</em></p>
+      {% else %}
+        {% if trial_events_map[trial.id] %}
+          {% for te in trial_events_map[trial.id] %}
+            <div class="form-group">
+              <label for="class_{{ te.id }}">{{ te.name }}</label>
+              <select id="class_{{ te.id }}" name="class_{{ te.id }}" class="class-select">
+                <option value="">— No entry —</option>
+                {% for cls in te_classes_map[te.id] %}
+                  <option value="{{ cls.id }}"
+                    {% if form_data.get('class_' ~ te.id|string) == cls.id|string %}selected{% endif %}>
+                    {{ cls.name }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+          {% endfor %}
+        {% else %}
+          <p><em>No events configured for this trial.</em></p>
+        {% endif %}
+      {% endif %}
+    </fieldset>
+  {% endfor %}
+
+  <div style="margin:1.5rem 0; padding:1rem; background:#f0f8ff; border-left:4px solid #2980b9; border-radius:4px;">
+    <strong>Total due: $<span id="total-display">0.00</span></strong>
+    <span style="font-size:0.85rem; color:#555;"> (based on class selections above)</span>
+  </div>
+
+  <div id="paypal-button-container" style="margin-top:1rem;"></div>
+  <input type="hidden" name="paypal_order_id" id="paypal_order_id">
+  <button type="submit" id="submit-btn" class="btn btn-primary" style="display:none;">
+    Complete Entry
+  </button>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://www.paypal.com/sdk/js?client-id={{ paypal_client_id }}&currency=USD"></script>
+<script src="{{ url_for('static', path='js/registration.js') }}"></script>
+<script src="{{ url_for('static', path='js/trial_form.js') }}"></script>
+<script>
+  window.trialFormConfig = {
+    createOrderUrl: '/payments/create-order',
+    captureOrderUrl: '/payments/capture-order',
+    eventId: {{ event.id }},
+    formId: 'entry-form',
+    orderIdFieldId: 'paypal_order_id',
+    submitBtnId: 'submit-btn',
+  };
+
+  // Country/state toggle
+  const countryEl = document.getElementById('country');
+  const stateGroup = document.getElementById('state-group');
+  function toggleState() {
+    const noState = ['AE','AP','AQ','BN','HK','KW','MO','MY','SG'];
+    stateGroup.style.display = noState.includes(countryEl.value) ? 'none' : '';
+  }
+  countryEl.addEventListener('change', toggleState);
+  toggleState();
+</script>
+{% endblock %}

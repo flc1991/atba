@@ -1,0 +1,17 @@
+REGISTRATION CONFIRMED
+{{ event.title }}
+
+Dear {{ reg.name }},
+
+Your registration for {{ event.title }} ({{ event.start_date.strftime('%B %d, %Y') }}) has been confirmed.
+
+Name: {{ reg.name }}
+Dog: {{ reg.dog_name }}
+Rate: {{ reg.pricing_tier | replace('_', ' ') | title }}
+Amount Paid: ${{ "%.2f" | format(reg.fee_cents / 100) }}
+
+We look forward to seeing you and {{ reg.dog_name }} at the event!
+
+Thank you,
+ATBA
+{{ base_url }}

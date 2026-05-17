@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Smart Dog Day Registration — {{ event.title }}{% endblock %}
+
+{% block content %}
+<h1>Smart Dog Day Registration</h1>
+<h2>{{ event.title }} &mdash; {{ event.start_date.strftime('%B %d, %Y') }}</h2>
+
+<div class="pricing-info" style="margin-bottom:1.5rem; padding:1rem; background:#eafaf1; border-left:4px solid #2ecc71; border-radius:4px;">
+  <strong>Your rate: ${{ "%.2f" | format(fee_cents / 100) }}</strong>
+  ({{ pricing_tier | replace('_', ' ') | title }})
+  {% if pricing_tier == 'pre_member' %}
+    &mdash; Member pre-entry discount applied!
+  {% elif pricing_tier == 'pre_general' %}
+    &mdash; Pre-entry rate.
+    {% if not current_user %} <a href="/auth/login">Log in</a> as a current member for a discount.{% endif %}
+  {% else %}
+    &mdash; Late/day-of rate.
+  {% endif %}
+</div>
+
+<form method="post" action="/events/{{ event.id }}/register/smart-dog-day" id="reg-form" style="max-width:560px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  <fieldset>
+    <legend>Your Information</legend>
+    <div class="form-group">
+      <label for="name">Full name</label>
+      <input type="text" id="name" name="name" required value="{{ form_data.name or '' }}">
+    </div>
+    <div class="form-group">
+      <label for="email">Email address</label>
+      <input type="email" id="email" name="email" required value="{{ form_data.email or '' }}">
+    </div>
+    <div class="form-group">
+      <label for="phone">Phone <span class="form-hint">(optional)</span></label>
+      <input type="tel" id="phone" name="phone" value="{{ form_data.phone or '' }}">
+    </div>
+    <div class="form-group">
+      <label for="address_line1">Street address</label>
+      <input type="text" id="address_line1" name="address_line1" value="{{ form_data.address_line1 or '' }}">
+    </div>
+    <div class="form-group">
+      <label for="address_line2">Apt / Suite <span class="form-hint">(optional)</span></label>
+      <input type="text" id="address_line2" name="address_line2" value="{{ form_data.address_line2 or '' }}">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="city">City</label>
+        <input type="text" id="city" name="city" value="{{ form_data.city or '' }}">
+      </div>
+      <div class="form-group" id="state-group">
+        <label for="state_province">State / Province</label>
+        <input type="text" id="state_province" name="state_province" value="{{ form_data.state_province or '' }}">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="postal_code">Postal code</label>
+        <input type="text" id="postal_code" name="postal_code" value="{{ form_data.postal_code or '' }}">
+      </div>
+      <div class="form-group">
+        <label for="country">Country</label>
+        <select id="country" name="country">
+          {% for code, name in countries %}
+            <option value="{{ code }}" {% if (form_data.country or 'US') == code %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Dog Information</legend>
+    <div class="form-group">
+      <label for="dog_name">Dog's name</label>
+      <input type="text" id="dog_name" name="dog_name" required value="{{ form_data.dog_name or '' }}">
+    </div>
+  </fieldset>
+
+  {% if not current_user %}
+    <div class="form-group">
+      <label>
+        <input type="checkbox" name="is_member_claim" value="1"
+               {% if form_data.is_member_claim %}checked{% endif %}>
+        I am a current ATBA member
+      </label>
+      <div class="form-hint">Member discount applies during pre-entry only. Membership will be verified.</div>
+    </div>
+  {% endif %}
+
+  <p><strong>Total due: ${{ "%.2f" | format(fee_cents / 100) }}</strong></p>
+
+  <button type="submit" id="submit-btn" class="btn btn-primary" style="margin-top:1rem; font-size:1.05em;">
+    Continue to PayPal
+  </button>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Country/state toggle
+  const countryEl = document.getElementById('country');
+  const stateGroup = document.getElementById('state-group');
+  function toggleState() {
+    const noState = ['AE','AP','AQ','BN','HK','KW','MO','MY','SG'];
+    stateGroup.style.display = noState.includes(countryEl.value) ? 'none' : '';
+  }
+  countryEl.addEventListener('change', toggleState);
+  toggleState();
+</script>
+{% endblock %}

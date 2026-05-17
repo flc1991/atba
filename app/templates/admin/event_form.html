@@ -1,0 +1,222 @@
+{% extends "admin/base.html" %}
+{% block title %}{% if event %}Edit Event{% else %}New Event{% endif %} — Admin{% endblock %}
+
+{% block admin_content %}
+<h1>{% if event %}Edit: {{ event.title }}{% else %}New Event{% endif %}</h1>
+
+{% if event %}
+  <div style="margin-bottom:1rem;">
+    <a href="/events/{{ event.id }}" class="btn btn-secondary btn-sm" target="_blank">View on site &rarr;</a>
+    {% if event.event_type == 'trial' %}
+      <a href="/admin/events/{{ event.id }}/trial-entries" class="btn btn-secondary btn-sm">Trial Entries</a>
+      <a href="/admin/events/{{ event.id }}/call-numbers" class="btn btn-secondary btn-sm">Call Numbers</a>
+    {% elif event.event_type in ('fun_run','smart_dog_day') %}
+      <a href="/admin/events/{{ event.id }}/registrations" class="btn btn-secondary btn-sm">Registrations</a>
+    {% endif %}
+  </div>
+{% endif %}
+
+<form method="post"
+      action="{% if event %}/admin/events/{{ event.id }}/edit{% else %}/admin/events/new{% endif %}"
+      style="max-width:640px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  <fieldset>
+    <legend>Event Details</legend>
+    <div class="form-group">
+      <label for="title">Title</label>
+      <input type="text" id="title" name="title" required value="{{ form_data.title or '' }}">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="event_type">Type</label>
+        <select id="event_type" name="event_type">
+          {% for et in event_types %}
+            <option value="{{ et }}" {% if form_data.event_type == et %}selected{% endif %}>
+              {{ et | replace('_',' ') | title }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="location">Location</label>
+        <input type="text" id="location" name="location" value="{{ form_data.location or '' }}">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="start_date">Start date</label>
+        <input type="date" id="start_date" name="start_date" required value="{{ form_data.start_date or '' }}">
+      </div>
+      <div class="form-group">
+        <label for="end_date">End date</label>
+        <input type="date" id="end_date" name="end_date" value="{{ form_data.end_date or '' }}">
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="description">Description</label>
+      <textarea id="description" name="description" rows="3">{{ form_data.description or '' }}</textarea>
+    </div>
+  </fieldset>
+
+  <fieldset id="pricing-fieldset">
+    <legend>Pricing <span class="form-hint">(Fun Run / Smart Dog Day only — leave blank for trial events)</span></legend>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="fee_pre_member_cents">Pre-entry member (cents)</label>
+        <input type="number" id="fee_pre_member_cents" name="fee_pre_member_cents" min="0"
+               value="{{ form_data.fee_pre_member_cents or '' }}" placeholder="e.g. 2000">
+      </div>
+      <div class="form-group">
+        <label for="fee_pre_general_cents">Pre-entry general (cents)</label>
+        <input type="number" id="fee_pre_general_cents" name="fee_pre_general_cents" min="0"
+               value="{{ form_data.fee_pre_general_cents or '' }}" placeholder="e.g. 2500">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="fee_late_cents">Late / day-of (cents)</label>
+        <input type="number" id="fee_late_cents" name="fee_late_cents" min="0"
+               value="{{ form_data.fee_late_cents or '' }}" placeholder="e.g. 3000">
+      </div>
+      <div class="form-group">
+        <label for="pre_entry_close_dt">Pre-entry closes (ET)</label>
+        <input type="datetime-local" id="pre_entry_close_dt" name="pre_entry_close_dt"
+               value="{{ form_data.pre_entry_close_dt or '' }}">
+      </div>
+    </div>
+  </fieldset>
+
+  <div style="margin-top:1rem;">
+    <button type="submit" class="btn btn-primary">{% if event %}Save Changes{% else %}Create Event{% endif %}</button>
+    <a href="/admin/events" class="btn btn-secondary" style="margin-left:0.5rem;">Cancel</a>
+  </div>
+</form>
+
+{% if event %}
+  {# Publish / Delete actions #}
+  <div style="display:flex; gap:1rem; margin-top:2rem; padding-top:1rem; border-top:1px solid #eee;">
+    <form method="post" action="/admin/events/{{ event.id }}/publish">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn-secondary">
+        {{ 'Unpublish' if event.is_published else 'Publish' }}
+      </button>
+    </form>
+    {% if not event.is_deleted %}
+      <form method="post" action="/admin/events/{{ event.id }}/delete"
+            onsubmit="return confirm('Soft-delete this event?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-danger btn-sm">Delete (soft)</button>
+      </form>
+    {% endif %}
+    <form method="post" action="/admin/events/{{ event.id }}/send-all-verifications"
+          onsubmit="return confirm('Send verification emails to all unsent entries/registrations?')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn-secondary">Send All Verifications</button>
+    </form>
+  </div>
+
+  {# Trials section (only for trial events) #}
+  {% if event.event_type == 'trial' %}
+    <section style="margin-top:2rem;">
+      <h2>Trials</h2>
+      {% if trials %}
+        <table>
+          <thead><tr><th>Body</th><th>Event #(s)</th><th>Reg closes</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            {% for trial in trials %}
+              <tr>
+                <td>{{ trial.governing_body }}</td>
+                <td>
+                  {{ trial.akc_event_number or '—' }}
+                  {% if trial.akc_event_number_2 %} / {{ trial.akc_event_number_2 }}{% endif %}
+                </td>
+                <td>
+                  {% if trial.reg_close_dt %}
+                    {{ trial.reg_close_dt.strftime('%b %d %Y %H:%M UTC') }}
+                  {% else %}—{% endif %}
+                </td>
+                <td>
+                  <span style="color: {% if trial_statuses[trial.id] == 'open' %}#27ae60{% else %}#e74c3c{% endif %};">
+                    {{ trial_statuses[trial.id] | title }}
+                  </span>
+                </td>
+                <td style="white-space:nowrap;">
+                  <a href="/admin/trials/{{ trial.id }}/edit" class="btn btn-secondary btn-sm">Edit</a>
+                  <form method="post" action="/admin/trials/{{ trial.id }}/copy" style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn btn-secondary btn-sm">Copy</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p>No trials added yet.</p>
+      {% endif %}
+      <a href="/admin/events/{{ event.id }}/trials/new" class="btn btn-primary" style="margin-top:0.5rem;">+ Add Trial</a>
+    </section>
+  {% endif %}
+
+  {# PDF upload section #}
+  <section style="margin-top:2rem;">
+    <h2>Documents</h2>
+    {% if pdfs %}
+      <table>
+        <thead><tr><th>Body</th><th>Type</th><th>File</th><th></th></tr></thead>
+        <tbody>
+          {% for pdf in pdfs %}
+            <tr>
+              <td>{{ pdf.governing_body }}</td>
+              <td>{{ pdf.document_type | replace('_',' ') | title }}</td>
+              <td>
+                <a href="/events/{{ event.id }}/docs/{{ pdf.governing_body }}/{{ pdf.document_type }}.pdf"
+                   target="_blank">{{ pdf.filename }}</a>
+              </td>
+              <td>
+                <form method="post" action="/admin/pdfs/{{ pdf.id }}/delete"
+                      onsubmit="return confirm('Delete this PDF?')" style="display:inline;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>No documents uploaded.</p>
+    {% endif %}
+
+    <h3>Upload PDF</h3>
+    <form method="post" action="/admin/events/{{ event.id }}/pdfs/upload" enctype="multipart/form-data"
+          style="max-width:480px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Governing body</label>
+          <select name="governing_body">
+            <option value="AKC">AKC</option>
+            <option value="AHBA">AHBA</option>
+            <option value="ATBA">ATBA</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Document type</label>
+          <select name="document_type">
+            {% for dt in document_types %}
+              <option value="{{ dt }}">{{ dt | replace('_',' ') | title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>PDF file</label>
+        <input type="file" name="pdf_file" accept=".pdf" required>
+      </div>
+      <button type="submit" class="btn btn-primary">Upload</button>
+    </form>
+  </section>
+{% endif %}
+{% endblock %}

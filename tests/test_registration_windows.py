@@ -64,8 +64,8 @@ class TestAhbaClose:
 
 
 class TestGetTrialStatus:
-    def test_none_is_open(self):
-        assert get_trial_status(None) == "open"
+    def test_none_is_not_yet_open(self):
+        assert get_trial_status(None) == "not_yet_open"
 
     def test_future_is_open(self):
         future = datetime.now(UTC) + timedelta(hours=1)

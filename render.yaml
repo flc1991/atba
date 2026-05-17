@@ -1,0 +1,46 @@
+services:
+  - type: web
+    name: atba-herding
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    # preDeployCommand runs after the persistent disk is mounted at /data,
+    # so the SQLite file ends up in the right place (build container has no disk).
+    preDeployCommand: alembic upgrade head && python seed.py
+    startCommand: gunicorn main:app -k uvicorn.workers.UvicornWorker -w 2 --bind 0.0.0.0:$PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "false"
+      - key: BASE_URL
+        value: https://atba-herding.onrender.com
+      - key: DATABASE_URL
+        value: sqlite:////data/atba.db
+      - key: PAYPAL_BUSINESS_EMAIL
+        sync: false
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_MODE
+        value: sandbox
+      - key: MAIL_USERNAME
+        sync: false
+      - key: MAIL_PASSWORD
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: MAIL_SERVER
+        value: smtp.gmail.com
+      - key: MAIL_PORT
+        value: "587"
+      - key: MAIL_STARTTLS
+        value: "true"
+      - key: MAIL_SSL_TLS
+        value: "false"
+    disk:
+      name: atba-data
+      mountPath: /data
+      sizeGB: 1

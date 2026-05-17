@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     PAYPAL_CLIENT_ID: str = ""
     PAYPAL_CLIENT_SECRET: str = ""
     PAYPAL_MODE: str = "sandbox"  # "sandbox" or "live"
+    # PayPal Standard Payments (form-redirect flow): merchant email collected by PayPal.
+    PAYPAL_BUSINESS_EMAIL: str = ""
 
     MAIL_USERNAME: str = ""
     MAIL_PASSWORD: str = ""
@@ -27,6 +29,13 @@ class Settings(BaseSettings):
         if self.PAYPAL_MODE == "live":
             return "https://api-m.paypal.com"
         return "https://api-m.sandbox.paypal.com"
+
+    @property
+    def paypal_checkout_url(self) -> str:
+        """Endpoint for PayPal Standard Payments form POST (cgi-bin/webscr)."""
+        if self.PAYPAL_MODE == "live":
+            return "https://www.paypal.com/cgi-bin/webscr"
+        return "https://www.sandbox.paypal.com/cgi-bin/webscr"
 
 
 settings = Settings()

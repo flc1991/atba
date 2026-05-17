@@ -1,0 +1,68 @@
+{% extends "admin/base.html" %}
+{% block title %}Admin Dashboard — ATBA Herding{% endblock %}
+
+{% block admin_content %}
+<h1>Admin Dashboard</h1>
+
+<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:1rem; margin-bottom:2rem;">
+  <div style="background:#eafaf1; border-left:4px solid #2ecc71; padding:1rem; border-radius:4px;">
+    <div style="font-size:2rem; font-weight:bold;">{{ total_entries }}</div>
+    <div>Trial Entries</div>
+  </div>
+  <div style="background:#eaf4fb; border-left:4px solid #2980b9; padding:1rem; border-radius:4px;">
+    <div style="font-size:2rem; font-weight:bold;">{{ total_regs }}</div>
+    <div>Registrations</div>
+  </div>
+  <div style="background:#fef9e7; border-left:4px solid #f39c12; padding:1rem; border-radius:4px;">
+    <div style="font-size:2rem; font-weight:bold;">{{ total_members }}</div>
+    <div>Members</div>
+  </div>
+</div>
+
+<h2>Upcoming Events</h2>
+{% if upcoming_events %}
+  <table>
+    <thead><tr><th>Date</th><th>Title</th><th>Type</th><th>Published</th><th></th></tr></thead>
+    <tbody>
+      {% for event in upcoming_events %}
+        <tr>
+          <td>{{ event.start_date.strftime('%b %d, %Y') }}</td>
+          <td>{{ event.title }}</td>
+          <td>{{ event.event_type | replace('_',' ') | title }}</td>
+          <td>{{ '✓' if event.is_published else '—' }}</td>
+          <td>
+            <a href="/admin/events/{{ event.id }}/edit" class="btn btn-secondary btn-sm">Edit</a>
+            <a href="/admin/events/{{ event.id }}/trial-entries" class="btn btn-secondary btn-sm">Entries</a>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <p>No upcoming events.</p>
+{% endif %}
+
+<h2>Recent Trial Entries</h2>
+{% if recent_entries %}
+  <table>
+    <thead><tr><th>#</th><th>Handler</th><th>Dog</th><th>Paid</th><th></th></tr></thead>
+    <tbody>
+      {% for entry in recent_entries %}
+        <tr>
+          <td>{{ entry.id }}</td>
+          <td>{{ entry.handler_name }}</td>
+          <td>{{ entry.dog_name }}</td>
+          <td>{{ '✓' if entry.is_paid else '—' }}</td>
+          <td><a href="/admin/trial-entries/{{ entry.id }}" class="btn btn-secondary btn-sm">View</a></td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <p>No entries yet.</p>
+{% endif %}
+
+<div style="margin-top:2rem;">
+  <a href="/admin/events/new" class="btn btn-primary">+ New Event</a>
+</div>
+{% endblock %}

@@ -1,0 +1,98 @@
+{% extends "admin/base.html" %}
+{% block title %}Entry #{{ entry.id }} — Admin{% endblock %}
+
+{% block admin_content %}
+<h1>Trial Entry #{{ entry.id }}</h1>
+<p>
+  <a href="/admin/events/{{ event.id }}/trial-entries">&larr; All entries for {{ event.title }}</a>
+</p>
+
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:2rem;">
+  {# Left: edit form #}
+  <div>
+    <h2>Handler &amp; Dog</h2>
+    <form method="post" action="/admin/trial-entries/{{ entry.id }}/edit">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="form-group">
+        <label>Handler name</label>
+        <input type="text" name="handler_name" value="{{ entry.handler_name }}" required>
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" name="handler_email" value="{{ entry.handler_email }}">
+      </div>
+      <div class="form-group">
+        <label>Phone</label>
+        <input type="tel" name="handler_phone" value="{{ entry.handler_phone or '' }}">
+      </div>
+      <div class="form-group">
+        <label>Dog name</label>
+        <input type="text" name="dog_name" value="{{ entry.dog_name }}" required>
+      </div>
+      <div class="form-group">
+        <label>Breed</label>
+        <input type="text" name="dog_breed" value="{{ entry.dog_breed or '' }}">
+      </div>
+      <div class="form-group">
+        <label>Registration number</label>
+        <input type="text" name="dog_registration_number" value="{{ entry.dog_registration_number or '' }}">
+      </div>
+      <div class="form-group">
+        <label><input type="checkbox" name="is_paid" value="1" {% if entry.is_paid %}checked{% endif %}> Paid</label>
+      </div>
+      <button type="submit" class="btn btn-primary">Save</button>
+    </form>
+  </div>
+
+  {# Right: summary + actions #}
+  <div>
+    <h2>Entry Details</h2>
+    <table>
+      <tr><td style="color:#666;">PayPal Order</td><td>{{ entry.paypal_order_id or '—' }}</td></tr>
+      <tr><td style="color:#666;">Total Fee</td><td>${{ "%.2f" | format(entry.total_fee_cents / 100) }}</td></tr>
+      <tr><td style="color:#666;">Manual Entry</td><td>{{ '✓' if entry.is_manual_entry else '—' }}</td></tr>
+      <tr><td style="color:#666;">Verification Sent</td><td>{{ '✓' if entry.verification_sent else '—' }}</td></tr>
+    </table>
+
+    <h3>Address</h3>
+    <p style="line-height:1.7;">
+      {{ entry.address_line1 }}<br>
+      {% if entry.address_line2 %}{{ entry.address_line2 }}<br>{% endif %}
+      {{ entry.city }}{% if entry.state_province %}, {{ entry.state_province }}{% endif %} {{ entry.postal_code }}<br>
+      {{ entry.country }}
+    </p>
+
+    <h3>Class Selections</h3>
+    {% for trial in trials %}
+      <strong>{{ trial.governing_body }}</strong>
+      <ul style="margin:0.25rem 0 0.75rem 1.5rem;">
+        {% for te in trial_events_map[trial.id] %}
+          {% set sel = current_sels.get(te.id) %}
+          <li>
+            {{ te.name }}:
+            {% if sel %}
+              {% set cls = none %}
+              {% for c in te_classes_map[te.id] %}
+                {% if c.id == sel.trial_event_class_id %}
+                  <strong>{{ c.name }}</strong>
+                  {% if sel.call_number %} (Call #{{ sel.call_number }}){% endif %}
+                {% endif %}
+              {% endfor %}
+            {% else %}
+              <em style="color:#888;">No entry</em>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% endfor %}
+
+    <form method="post" action="/admin/trial-entries/{{ entry.id }}/send-verification"
+          style="margin-top:1rem;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn-secondary">
+        {% if entry.verification_sent %}Resend Verification Email{% else %}Send Verification Email{% endif %}
+      </button>
+    </form>
+  </div>
+</div>
+{% endblock %}

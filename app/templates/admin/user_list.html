@@ -1,0 +1,46 @@
+{% extends "admin/base.html" %}
+{% block title %}Users — Admin{% endblock %}
+
+{% block admin_content %}
+<h1>Users</h1>
+
+{% if users %}
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th><th>Email</th><th>Role</th><th>Trial Sec.</th><th>Active</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+        <tr>
+          <td>{{ u.name }}</td>
+          <td>{{ u.email }}</td>
+          <td>{{ u.role }}</td>
+          <td>{{ '✓' if u.is_trial_secretary else '—' }}</td>
+          <td>{{ '✓' if u.is_active else '—' }}</td>
+          <td style="white-space:nowrap;">
+            <form method="post" action="/admin/users/{{ u.id }}/toggle-trial-secretary"
+                  style="display:inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="btn btn-secondary btn-sm">
+                {{ 'Remove Sec.' if u.is_trial_secretary else 'Make Trial Sec.' }}
+              </button>
+            </form>
+            <form method="post" action="/admin/users/{{ u.id }}/toggle-admin"
+                  style="display:inline;"
+                  onsubmit="return confirm('Change role for {{ u.name }}?')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="btn btn-secondary btn-sm">
+                {{ 'Remove Admin' if u.role == 'admin' else 'Make Admin' }}
+              </button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <p>No users yet.</p>
+{% endif %}
+{% endblock %}

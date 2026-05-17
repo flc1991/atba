@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Entry Confirmed — {{ event.title }}{% endblock %}
+
+{% block content %}
+<div style="max-width:640px; margin:2rem auto; text-align:center;">
+  <div style="font-size:3rem; margin-bottom:1rem;">&#10003;</div>
+  <h1>Entry Submitted!</h1>
+  <h2>{{ event.title }} — {{ entry.governing_body }} Trial</h2>
+  <p style="color:#555; margin-bottom:2rem;">{{ event.start_date.strftime('%B %d, %Y') }}</p>
+
+  <div class="card" style="text-align:left; padding:1.5rem; background:#f9f9f9; border-radius:6px; margin-bottom:2rem;">
+    <h3 style="margin-top:0;">Entry Summary</h3>
+    <table style="width:100%; border-collapse:collapse;">
+      {% if entry.governing_body == 'AKC' %}
+        <tr>
+          <td style="padding:0.4rem 0; color:#666; width:40%;">Owner(s)</td>
+          <td style="padding:0.4rem 0;"><strong>{{ entry.akc_owner_names or entry.handler_name }}</strong></td>
+        </tr>
+        <tr>
+          <td style="padding:0.4rem 0; color:#666;">Contact</td>
+          <td style="padding:0.4rem 0;">{{ entry.handler_name }}</td>
+        </tr>
+      {% else %}
+        <tr>
+          <td style="padding:0.4rem 0; color:#666; width:40%;">Owner</td>
+          <td style="padding:0.4rem 0;"><strong>{{ entry.handler_name }}</strong></td>
+        </tr>
+        {% if entry.ahba_agent_name %}
+          <tr>
+            <td style="padding:0.4rem 0; color:#666;">Agent</td>
+            <td style="padding:0.4rem 0;">{{ entry.ahba_agent_name }}</td>
+          </tr>
+        {% endif %}
+      {% endif %}
+      <tr>
+        <td style="padding:0.4rem 0; color:#666;">Dog</td>
+        <td style="padding:0.4rem 0;"><strong>{{ entry.dog_name }}</strong>
+          {% if entry.dog_call_name and entry.dog_call_name != entry.dog_name %}
+            ({{ entry.dog_call_name }})
+          {% endif %}
+        </td>
+      </tr>
+      {% if entry.dog_breed %}
+        <tr>
+          <td style="padding:0.4rem 0; color:#666;">Breed</td>
+          <td style="padding:0.4rem 0;">{{ entry.dog_breed }}</td>
+        </tr>
+      {% endif %}
+      <tr>
+        <td style="padding:0.4rem 0; color:#666;">Email</td>
+        <td style="padding:0.4rem 0;">{{ entry.handler_email }}</td>
+      </tr>
+      <tr>
+        <td style="padding:0.4rem 0; color:#666;">Total paid</td>
+        <td style="padding:0.4rem 0;"><strong>${{ "%.2f" | format(entry.total_fee_cents / 100) }}</strong></td>
+      </tr>
+    </table>
+
+    <h4 style="margin-top:1.5rem; margin-bottom:0.5rem;">Class Entries</h4>
+    <table style="width:100%; border-collapse:collapse; font-size:0.95rem;">
+      <thead>
+        <tr style="border-bottom:1px solid #ddd;">
+          <th style="text-align:left; padding:0.3rem 0; color:#555;">Event</th>
+          <th style="text-align:left; padding:0.3rem 0; color:#555;">Class</th>
+          {% if entry.governing_body == 'AKC' %}
+            <th style="text-align:left; padding:0.3rem 0; color:#555;">Enter In</th>
+            <th style="text-align:left; padding:0.3rem 0; color:#555;">Day Pref.</th>
+          {% endif %}
+          <th style="text-align:left; padding:0.3rem 0; color:#555;">Call #</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for sel in selection_details %}
+          <tr>
+            <td style="padding:0.3rem 0;">{{ sel.event_name }}</td>
+            <td style="padding:0.3rem 0;">{{ sel.class_name }}</td>
+            {% if entry.governing_body == 'AKC' %}
+              <td style="padding:0.3rem 0;">
+                {% if sel.akc_trial_pref == 'both' %}Both Events
+                {% elif sel.akc_trial_pref == 'event_2' %}Event 2
+                {% else %}Event 1{% endif %}
+              </td>
+              <td style="padding:0.3rem 0; text-transform:capitalize;">
+                {{ sel.day_preference or '—' }}
+              </td>
+            {% endif %}
+            <td style="padding:0.3rem 0; color:#888;">{{ sel.call_number or '—' }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <p style="color:#555;">
+    A confirmation email will be sent to <strong>{{ entry.handler_email }}</strong>.
+    Call numbers will be assigned after the entry period closes.
+  </p>
+
+  <div style="margin-top:2rem;">
+    <a href="/events" class="btn btn-secondary">Back to Events</a>
+    {% if current_user %}
+      &nbsp;
+      <a href="/auth/entries" class="btn btn-secondary">My Entries</a>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

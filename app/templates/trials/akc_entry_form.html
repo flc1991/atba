@@ -1,0 +1,416 @@
+{% extends "base.html" %}
+{% block title %}AKC Trial Entry — {{ event.title }}{% endblock %}
+
+{% block content %}
+<h1>AKC Herding Trial Entry</h1>
+<h2>{{ event.title }} &mdash; {{ event.start_date.strftime('%B %d, %Y') }}</h2>
+
+{% if trial.akc_event_number %}
+  <p>
+    <strong>Event 1:</strong> {{ trial.akc_event_number }}
+    {% if trial.akc_event_number_2 %}
+      &nbsp;&nbsp;<strong>Event 2:</strong> {{ trial.akc_event_number_2 }}
+    {% endif %}
+  </p>
+{% endif %}
+
+<form method="post" action="/events/{{ event.id }}/trial/enter/akc" id="entry-form" style="max-width:720px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  {# ---- Actual Owner Information ---- #}
+  <fieldset>
+    <legend>Actual Owner Information</legend>
+    <div class="form-group">
+      <label for="handler_name">Name of actual owner(s) <span class="required">*</span></label>
+      <input type="text" id="handler_name" name="handler_name" required
+             value="{{ form_data.handler_name or '' }}">
+    </div>
+    <div class="form-group">
+      <label for="address_line1">Street address <span class="required">*</span></label>
+      <input type="text" id="address_line1" name="address_line1"
+             value="{{ form_data.address_line1 or '' }}">
+    </div>
+    <div class="form-group">
+      <label for="address_line2">Apt / Suite <span class="form-hint">(optional)</span></label>
+      <input type="text" id="address_line2" name="address_line2"
+             value="{{ form_data.address_line2 or '' }}">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="city">City <span class="required">*</span></label>
+        <input type="text" id="city" name="city" value="{{ form_data.city or '' }}">
+      </div>
+      <div class="form-group" id="state-group">
+        <label for="state_province">State / Province</label>
+        <input type="text" id="state_province" name="state_province"
+               value="{{ form_data.state_province or '' }}">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="postal_code">Postal code</label>
+        <input type="text" id="postal_code" name="postal_code"
+               value="{{ form_data.postal_code or '' }}">
+      </div>
+      <div class="form-group">
+        <label for="country">Country</label>
+        <select id="country" name="country">
+          {% for code, name in countries %}
+            <option value="{{ code }}"
+              {% if (form_data.country or 'US') == code %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="handler_email">Email <span class="required">*</span></label>
+        <input type="email" id="handler_email" name="handler_email" required
+               value="{{ form_data.handler_email or '' }}">
+      </div>
+      <div class="form-group">
+        <label for="handler_phone">Phone <span class="form-hint">(optional)</span></label>
+        <input type="tel" id="handler_phone" name="handler_phone"
+               value="{{ form_data.handler_phone or '' }}">
+      </div>
+    </div>
+  </fieldset>
+
+  {# ---- Handler (optional, if different from owner) ---- #}
+  <fieldset>
+    <legend>Handler <span class="form-hint">(optional — only if different from owner)</span></legend>
+    <div class="form-group">
+      <label for="akc_handler_name">Handler's name <span class="form-hint">(optional)</span></label>
+      <input type="text" id="akc_handler_name" name="akc_handler_name"
+             value="{{ form_data.akc_handler_name or '' }}">
+    </div>
+    <div class="form-group">
+      <label for="akc_handler_address">Handler's address <span class="form-hint">(optional)</span></label>
+      <textarea id="akc_handler_address" name="akc_handler_address" rows="3"
+                style="width:100%;">{{ form_data.akc_handler_address or '' }}</textarea>
+    </div>
+    <div class="form-group">
+      <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;">
+        <input type="checkbox" name="akc_separate_entries" value="1"
+               {% if form_data.get('akc_separate_entries') %}checked{% endif %}>
+        Please separate my entries
+      </label>
+    </div>
+  </fieldset>
+
+  {# ---- Dog Information ---- #}
+  <fieldset>
+    <legend>Dog Information</legend>
+
+    {% if saved_dogs %}
+    <div class="form-group" style="margin-bottom:1rem; padding:0.75rem; background:#f0f8ff; border-left:4px solid #2980b9; border-radius:4px;">
+      <label for="dog-selector" style="font-weight:600;">Load a saved dog:</label>
+      <select id="dog-selector" style="margin-top:0.25rem;">
+        <option value="">— select a dog —</option>
+        {% for d in saved_dogs %}
+          <option value="{{ d.id }}"
+            data-dog-name="{{ d.dog_name or '' }}"
+            data-call-name="{{ d.dog_call_name or '' }}"
+            data-breed="{{ d.dog_breed or '' }}"
+            data-sex="{{ d.dog_sex or '' }}"
+            data-dob="{{ d.dog_dob.isoformat() if d.dog_dob else '' }}"
+            data-sire="{{ d.dog_sire or '' }}"
+            data-dam="{{ d.dog_dam or '' }}"
+            data-breeder="{{ d.dog_breeder or '' }}"
+            data-akc-type="{{ d.akc_number_type or '' }}"
+            data-akc-num="{{ d.akc_registration_number or '' }}"
+            data-akc-country="{{ d.akc_foreign_country or '' }}"
+          >{{ d.dog_name }}{% if d.dog_call_name and d.dog_call_name != d.dog_name %} &ldquo;{{ d.dog_call_name }}&rdquo;{% endif %}{% if d.dog_breed %} — {{ d.dog_breed }}{% endif %}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+
+    <div class="form-group">
+      <label>Registration type <span class="required">*</span></label>
+      <div style="display:flex; gap:1.5rem; flex-wrap:wrap; margin-top:0.25rem;">
+        {% set num_type = form_data.get('akc_number_type', 'AKC') %}
+        <label><input type="radio" name="akc_number_type" value="AKC"
+          {% if num_type == 'AKC' %}checked{% endif %}> AKC Number</label>
+        <label><input type="radio" name="akc_number_type" value="PAL_ILP"
+          {% if num_type == 'PAL_ILP' %}checked{% endif %}> PAL/ILP Number</label>
+        <label><input type="radio" name="akc_number_type" value="Foreign"
+          {% if num_type == 'Foreign' %}checked{% endif %}> Foreign</label>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="dog_registration_number">Registration number <span class="required">*</span></label>
+        <input type="text" id="dog_registration_number" name="dog_registration_number"
+               value="{{ form_data.dog_registration_number or '' }}">
+      </div>
+      <div class="form-group" id="foreign-country-group"
+           style="{{ '' if form_data.get('akc_number_type') == 'Foreign' else 'display:none;' }}">
+        <label for="akc_foreign_country">Country of origin <span class="required">*</span></label>
+        <input type="text" id="akc_foreign_country" name="akc_foreign_country"
+               value="{{ form_data.akc_foreign_country or '' }}">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="dog_name">Dog's registered name <span class="required">*</span></label>
+        <input type="text" id="dog_name" name="dog_name" required
+               value="{{ form_data.dog_name or '' }}">
+      </div>
+      <div class="form-group">
+        <label for="dog_call_name">Call name <span class="form-hint">(optional)</span></label>
+        <input type="text" id="dog_call_name" name="dog_call_name"
+               value="{{ form_data.dog_call_name or '' }}">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="dog_breed">Breed <span class="required">*</span></label>
+        <input type="text" id="dog_breed" name="dog_breed"
+               value="{{ form_data.dog_breed or '' }}">
+      </div>
+      <div class="form-group">
+        <label for="dog_sex">Sex <span class="required">*</span></label>
+        <select id="dog_sex" name="dog_sex">
+          <option value="">— select —</option>
+          <option value="M" {% if form_data.get('dog_sex') == 'M' %}selected{% endif %}>Male</option>
+          <option value="F" {% if form_data.get('dog_sex') == 'F' %}selected{% endif %}>Female</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="dog_dob">Date of birth <span class="required">*</span></label>
+        <input type="date" id="dog_dob" name="dog_dob"
+               value="{{ form_data.dog_dob or '' }}">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="dog_sire">Sire <span class="form-hint">(optional)</span></label>
+        <input type="text" id="dog_sire" name="dog_sire" value="{{ form_data.dog_sire or '' }}">
+      </div>
+      <div class="form-group">
+        <label for="dog_dam">Dam <span class="form-hint">(optional)</span></label>
+        <input type="text" id="dog_dam" name="dog_dam" value="{{ form_data.dog_dam or '' }}">
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="dog_breeder">Breeder <span class="form-hint">(optional)</span></label>
+      <input type="text" id="dog_breeder" name="dog_breeder" value="{{ form_data.dog_breeder or '' }}">
+    </div>
+
+    {% if current_user %}
+    <div class="form-group" style="margin-top:0.5rem;">
+      <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;">
+        <input type="checkbox" name="save_dog" value="1">
+        Save this dog to my account for future entries
+      </label>
+    </div>
+    {% endif %}
+  </fieldset>
+
+  {# ---- Class / Event Selections ---- #}
+  <fieldset>
+    <legend>Class &amp; Event Selections</legend>
+    <p style="font-size:0.9rem; color:#555;">
+      Select a class (or check the box for test classes). Choose which event number(s) and day preference where applicable.
+    </p>
+
+    {% if trial_events %}
+      <div style="overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse; font-size:0.9rem; min-width:560px;">
+          <thead>
+            <tr style="border-bottom:2px solid #2c6e2e; text-align:left;">
+              <th style="padding:0.4rem 0.5rem;">Event</th>
+              <th style="padding:0.4rem 0.5rem;">Class</th>
+              {% if trial.akc_event_number_2 %}
+                <th style="padding:0.4rem 0.5rem;">Enter In</th>
+              {% endif %}
+              <th style="padding:0.4rem 0.5rem;">Day Pref.</th>
+              <th style="padding:0.4rem 0.5rem; text-align:right;">Fee</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for te in trial_events %}
+              <tr class="te-row"
+                  data-te-id="{{ te.id }}"
+                  data-fee="{{ te.fee_cents }}"
+                  data-is-test="{{ 'true' if te.is_test_class else 'false' }}"
+                  data-avail-days="{{ te.available_days or '' }}"
+                  style="border-bottom:1px solid #eee;">
+                <td style="padding:0.5rem;"><strong>{{ te.name }}</strong></td>
+
+                {# Class selection #}
+                <td style="padding:0.5rem;">
+                  {% if te.is_test_class %}
+                    <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer;">
+                      <input type="checkbox" name="enter_te_{{ te.id }}" value="1"
+                             class="te-enter-check"
+                             {% if form_data.get('enter_te_' ~ te.id|string) %}checked{% endif %}>
+                      Enter
+                    </label>
+                  {% else %}
+                    <select name="class_{{ te.id }}" class="class-select" style="max-width:160px;">
+                      <option value="">— no entry —</option>
+                      {% for cls in te_classes_map[te.id] %}
+                        <option value="{{ cls.id }}"
+                          {% if form_data.get('class_' ~ te.id|string) == cls.id|string %}selected{% endif %}>
+                          {{ cls.name }}
+                        </option>
+                      {% endfor %}
+                    </select>
+                  {% endif %}
+                </td>
+
+                {# AKC event checkboxes — Event 1 and/or Event 2 #}
+                {% if trial.akc_event_number_2 %}
+                  <td style="padding:0.5rem;">
+                    {% set pref_val = form_data.get('event_pref_' ~ te.id|string, 'event_1') %}
+                    <label style="display:block; white-space:nowrap; font-size:0.85rem;">
+                      <input type="checkbox" name="akc_ev1_{{ te.id }}" value="1"
+                             class="akc-ev-check"
+                             {% if form_data.get('akc_ev1_' ~ te.id|string) or (not form_data.get('akc_ev2_' ~ te.id|string) and pref_val in ('event_1', 'both', '')) %}checked{% endif %}>
+                      Event 1
+                    </label>
+                    <label style="display:block; white-space:nowrap; font-size:0.85rem;">
+                      <input type="checkbox" name="akc_ev2_{{ te.id }}" value="1"
+                             class="akc-ev-check"
+                             {% if form_data.get('akc_ev2_' ~ te.id|string) or pref_val == 'both' %}checked{% endif %}>
+                      Event 2
+                    </label>
+                  </td>
+                {% endif %}
+
+                {# Day preference — always visible where applicable #}
+                <td style="padding:0.5rem;">
+                  {% if te.available_days == 'either' %}
+                    {% set day_val = form_data.get('day_pref_' ~ te.id|string, '') %}
+                    <label style="display:block; white-space:nowrap; font-size:0.85rem;">
+                      <input type="radio" name="day_pref_{{ te.id }}" value=""
+                             {% if day_val == '' %}checked{% endif %}> No Pref
+                    </label>
+                    <label style="display:block; white-space:nowrap; font-size:0.85rem;">
+                      <input type="radio" name="day_pref_{{ te.id }}" value="friday"
+                             {% if day_val == 'friday' %}checked{% endif %}> Fri
+                    </label>
+                    <label style="display:block; white-space:nowrap; font-size:0.85rem;">
+                      <input type="radio" name="day_pref_{{ te.id }}" value="saturday"
+                             {% if day_val == 'saturday' %}checked{% endif %}> Sat
+                    </label>
+                  {% elif te.available_days == 'friday' %}
+                    <span style="color:#555; font-size:0.85rem;">Fri only</span>
+                  {% elif te.available_days == 'saturday' %}
+                    <span style="color:#555; font-size:0.85rem;">Sat only</span>
+                  {% else %}
+                    <span style="color:#aaa; font-size:0.85rem;">—</span>
+                  {% endif %}
+                </td>
+
+                <td style="padding:0.5rem; text-align:right; white-space:nowrap;">
+                  ${{ "%.2f" | format(te.fee_cents / 100) }}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p><em>No events have been configured for this trial yet.</em></p>
+    {% endif %}
+
+    <div style="margin-top:1rem; padding:0.75rem 1rem; background:#f0f8ff; border-left:4px solid #2980b9; border-radius:4px;">
+      <strong>Total due: $<span id="total-display">0.00</span></strong>
+      {% if trial.akc_event_number_2 %}
+        <span style="font-size:0.85rem; color:#555;"> — checking both Event 1 and Event 2 doubles the fee for that class</span>
+      {% endif %}
+    </div>
+  </fieldset>
+
+  {# ---- Signature & Submit ---- #}
+  <fieldset>
+    <legend>Signature</legend>
+
+    <div class="form-group">
+      <label for="signature">
+        Signature (type your full name) <span class="required">*</span><br>
+        <span class="form-hint">I certify the above information is correct and agree to abide by AKC rules.</span>
+      </label>
+      <input type="text" id="signature" name="signature"
+             value="{{ form_data.signature or '' }}">
+    </div>
+
+    <button type="submit" id="submit-btn" class="btn btn-primary" style="margin-top:1rem; font-size:1.05em;">
+      Continue to PayPal
+    </button>
+  </fieldset>
+</form>
+
+<style>
+  .required { color: #c0392b; }
+  .form-hint { font-weight: normal; color: #777; font-size: 0.88em; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  window.trialFormConfig = {
+    eventId: {{ event.id }},
+    formId: 'entry-form',
+    submitBtnId: 'submit-btn',
+    hasEventPref: {{ 'true' if trial.akc_event_number_2 else 'false' }},
+  };
+</script>
+<script src="{{ url_for('static', path='js/trial_form.js') }}"></script>
+<script>
+  // Dog selector pre-fill
+  var dogSelector = document.getElementById('dog-selector');
+  if (dogSelector) {
+    dogSelector.addEventListener('change', function() {
+      var opt = this.options[this.selectedIndex];
+      if (!opt || !opt.value) return;
+      var d = opt.dataset;
+      var setVal = function(id, val) {
+        var el = document.getElementById(id);
+        if (el) el.value = val || '';
+      };
+      setVal('dog_name', d.dogName);
+      setVal('dog_call_name', d.callName);
+      setVal('dog_breed', d.breed);
+      setVal('dog_dob', d.dob);
+      setVal('dog_sire', d.sire);
+      setVal('dog_dam', d.dam);
+      setVal('dog_breeder', d.breeder);
+      setVal('dog_registration_number', d.akcNum);
+      setVal('akc_foreign_country', d.akcCountry);
+      // Sex
+      var sexSel = document.getElementById('dog_sex');
+      if (sexSel) sexSel.value = d.sex || '';
+      // AKC number type
+      var numTypeRadios = document.querySelectorAll('input[name="akc_number_type"]');
+      numTypeRadios.forEach(function(r) { r.checked = (r.value === d.akcType); });
+      document.getElementById('foreign-country-group').style.display =
+        (d.akcType === 'Foreign') ? '' : 'none';
+    });
+  }
+
+  // Show/hide foreign country field
+  document.querySelectorAll('input[name="akc_number_type"]').forEach(function(radio) {
+    radio.addEventListener('change', function() {
+      document.getElementById('foreign-country-group').style.display =
+        (this.value === 'Foreign') ? '' : 'none';
+    });
+  });
+
+  // Country/state toggle
+  var countryEl = document.getElementById('country');
+  var stateGroup = document.getElementById('state-group');
+  function toggleState() {
+    var noState = ['AE','AP','AQ','BN','HK','KW','MO','MY','SG'];
+    stateGroup.style.display = noState.includes(countryEl.value) ? 'none' : '';
+  }
+  countryEl.addEventListener('change', toggleState);
+  toggleState();
+</script>
+{% endblock %}

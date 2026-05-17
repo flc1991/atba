@@ -20,13 +20,20 @@ templates = Jinja2Templates(directory="app/templates")
 @router.get("/", response_class=HTMLResponse)
 def events_list(request: Request, ctx: dict = Depends(base_context), db: Session = Depends(get_db)):
     today = date.today()
-    events = (
+    upcoming = (
         db.query(Event)
         .filter(Event.is_published.is_(True), Event.is_deleted.is_(False), Event.end_date >= today)
         .order_by(Event.start_date)
         .all()
     )
-    ctx["events"] = events
+    past = (
+        db.query(Event)
+        .filter(Event.is_published.is_(True), Event.is_deleted.is_(False), Event.end_date < today)
+        .order_by(Event.start_date.desc())
+        .all()
+    )
+    ctx["events"] = upcoming
+    ctx["past_events"] = past
     return templates.TemplateResponse(request, "events/list.html", ctx)
 
 
@@ -68,10 +75,27 @@ def event_detail(
         for pdf in pdfs:
             pdfs_by_body.setdefault(pdf.governing_body, []).append(pdf)
 
+        # Aggregate status per governing body: prefer "open", then "not_yet_open", else "closed"
+        def _agg_status(body: str) -> str:
+            statuses = [trial_statuses[t.id] for t in trials if t.governing_body == body]
+            if not statuses:
+                return "closed"
+            if "open" in statuses:
+                return "open"
+            if "not_yet_open" in statuses:
+                return "not_yet_open"
+            return "closed"
+
+        akc_status = _agg_status("AKC")
+        ahba_status = _agg_status("AHBA")
         ctx.update({
             "trials": trials,
             "trial_statuses": trial_statuses,
             "any_trial_open": any_trial_open,
+            "akc_status": akc_status,
+            "ahba_status": ahba_status,
+            "akc_open": akc_status == "open",
+            "ahba_open": ahba_status == "open",
             "trial_events_map": trial_events_map,
             "te_classes_map": te_classes_map,
             "pdfs_by_body": pdfs_by_body,

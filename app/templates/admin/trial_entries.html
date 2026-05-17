@@ -1,0 +1,93 @@
+{% extends "admin/base.html" %}
+{% block title %}Trial Entries — {{ event.title }} — Admin{% endblock %}
+
+{% block admin_content %}
+<h1>Trial Entries</h1>
+<h2>{{ event.title }} &mdash; {{ event.start_date.strftime('%B %d, %Y') }}</h2>
+
+<div style="margin-bottom:1rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
+  <a href="/admin/events/{{ event.id }}/edit" class="btn btn-secondary btn-sm">&larr; Event</a>
+  <a href="/admin/events/{{ event.id }}/call-numbers" class="btn btn-secondary btn-sm">Call Numbers</a>
+  <a href="/admin/events/{{ event.id }}/send-all-verifications" class="btn btn-secondary btn-sm"
+     onclick="return confirm('Send all unsent verification emails?')">Send All Verifications</a>
+</div>
+
+{# Manual entry form (collapsed) #}
+<details style="margin-bottom:1.5rem; border:1px solid #ddd; border-radius:4px; padding:1rem;">
+  <summary style="cursor:pointer; font-weight:bold;">+ Add Manual Entry</summary>
+  <form method="post" action="/admin/trial-entries/new" style="margin-top:1rem; max-width:480px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="event_id" value="{{ event.id }}">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Handler name</label>
+        <input type="text" name="handler_name" required>
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" name="handler_email">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Dog name</label>
+        <input type="text" name="dog_name" required>
+      </div>
+      <div class="form-group">
+        <label>Total fee (cents)</label>
+        <input type="number" name="total_fee_cents" value="0" min="0">
+      </div>
+    </div>
+    <div class="form-group">
+      <label><input type="checkbox" name="is_paid" value="1"> Paid</label>
+    </div>
+    <button type="submit" class="btn btn-primary">Add Entry</button>
+  </form>
+</details>
+
+{% if entries %}
+  <table>
+    <thead>
+      <tr>
+        <th>#</th><th>Handler</th><th>Dog</th><th>Classes</th>
+        <th>Fee</th><th>Paid</th><th>Verified</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for entry in entries %}
+        <tr>
+          <td>{{ entry.id }}</td>
+          <td>{{ entry.handler_name }}</td>
+          <td>{{ entry.dog_name }}</td>
+          <td>
+            {% for sel in entry_selections[entry.id] %}
+              <span style="white-space:nowrap;">
+                {{ sel.governing_body }} {{ sel.event_name }} {{ sel.class_name }}
+                {% if sel.call_number %}<strong>#{{ sel.call_number }}</strong>{% endif %}
+              </span>{% if not loop.last %}<br>{% endif %}
+            {% endfor %}
+          </td>
+          <td>${{ "%.2f" | format(entry.total_fee_cents / 100) }}</td>
+          <td>{{ '✓' if entry.is_paid else '—' }}</td>
+          <td>{{ '✓' if entry.verification_sent else '—' }}</td>
+          <td style="white-space:nowrap;">
+            <a href="/admin/trial-entries/{{ entry.id }}" class="btn btn-secondary btn-sm">Edit</a>
+            {% if trial_secretaries %}
+              <form method="post" action="/admin/trial-entries/{{ entry.id }}/send-verification"
+                    style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn btn-secondary btn-sm"
+                        {% if entry.verification_sent %}title="Already sent"{% endif %}>
+                  Email
+                </button>
+              </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <p>No entries yet.</p>
+{% endif %}
+{% endblock %}
