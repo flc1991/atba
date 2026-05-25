@@ -7,7 +7,26 @@
   <a href="/admin/events/new" class="btn btn-primary">+ New Event</a>
 </div>
 
-{% if events %}
+{% macro event_row(event) -%}
+  <tr>
+    <td style="white-space:nowrap;">{{ event.start_date.strftime('%b %d, %Y') }}</td>
+    <td>{{ event.title }}</td>
+    <td>{{ event.event_type | replace('_',' ') | title }}</td>
+    <td>{{ '✓' if event.is_published else '—' }}</td>
+    <td>{{ '✓' if event.is_deleted else '—' }}</td>
+    <td style="white-space:nowrap;">
+      <a href="/admin/events/{{ event.id }}/edit" class="btn btn-secondary btn-sm">Edit</a>
+      {% if event.event_type == 'trial' %}
+        <a href="/admin/events/{{ event.id }}/trial-entries" class="btn btn-secondary btn-sm">Entries</a>
+        <a href="/admin/events/{{ event.id }}/call-numbers" class="btn btn-secondary btn-sm">Call #s</a>
+      {% elif event.event_type in ('fun_run','smart_dog_day') %}
+        <a href="/admin/events/{{ event.id }}/registrations" class="btn btn-secondary btn-sm">Regs</a>
+      {% endif %}
+    </td>
+  </tr>
+{%- endmacro %}
+
+{% macro event_table(events) -%}
   <table>
     <thead>
       <tr>
@@ -15,27 +34,31 @@
       </tr>
     </thead>
     <tbody>
-      {% for event in events %}
-        <tr>
-          <td style="white-space:nowrap;">{{ event.start_date.strftime('%b %d, %Y') }}</td>
-          <td>{{ event.title }}</td>
-          <td>{{ event.event_type | replace('_',' ') | title }}</td>
-          <td>{{ '✓' if event.is_published else '—' }}</td>
-          <td>{{ '✓' if event.is_deleted else '—' }}</td>
-          <td style="white-space:nowrap;">
-            <a href="/admin/events/{{ event.id }}/edit" class="btn btn-secondary btn-sm">Edit</a>
-            {% if event.event_type == 'trial' %}
-              <a href="/admin/events/{{ event.id }}/trial-entries" class="btn btn-secondary btn-sm">Entries</a>
-              <a href="/admin/events/{{ event.id }}/call-numbers" class="btn btn-secondary btn-sm">Call #s</a>
-            {% elif event.event_type in ('fun_run','smart_dog_day') %}
-              <a href="/admin/events/{{ event.id }}/registrations" class="btn btn-secondary btn-sm">Regs</a>
-            {% endif %}
-          </td>
-        </tr>
-      {% endfor %}
+      {% for e in events %}{{ event_row(e) }}{% endfor %}
     </tbody>
   </table>
+{%- endmacro %}
+
+<h2 style="margin-top:0.5rem;">Upcoming &amp; this week</h2>
+{% if upcoming_events %}
+  {{ event_table(upcoming_events) }}
 {% else %}
-  <p>No events found.</p>
+  <p style="color:#777; font-style:italic;">No upcoming events.</p>
+{% endif %}
+
+{% if completed_recent %}
+  <h2 style="margin-top:2rem;">Recently completed <span style="font-size:0.7em; color:#777; font-weight:normal;">(within the past month)</span></h2>
+  {{ event_table(completed_recent) }}
+{% endif %}
+
+{% if completed_old %}
+  <details style="margin-top:2rem;">
+    <summary style="cursor:pointer; font-size:1.2em; font-weight:600;">
+      Older events <span style="font-size:0.75em; color:#777; font-weight:normal;">(over a month old — {{ completed_old | length }} event{{ 's' if completed_old | length != 1 else '' }})</span>
+    </summary>
+    <div style="margin-top:1rem;">
+      {{ event_table(completed_old) }}
+    </div>
+  </details>
 {% endif %}
 {% endblock %}

@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -439,9 +441,13 @@ def entries_page(
     db: Session = Depends(get_db),
     current_user=Depends(require_login),
 ):
+    from datetime import timedelta
     from app.models.trial import TrialEntry, TrialEntrySelection, TrialEvent, TrialEventClass, Trial
     from app.models.event import Event
-    from app.models.registration import Registration
+    from app.models.registration import Registration, RegistrationDog
+
+    today = date.today()
+    cutoff_past = today - timedelta(days=7)
 
     # Fetch trial entries with related data
     trial_entries_raw = (
@@ -451,11 +457,10 @@ def entries_page(
         .all()
     )
 
-    trial_entries = []
+    trial_entries_upcoming = []
+    trial_entries_past = []
     for entry in trial_entries_raw:
         event = db.get(Event, entry.event_id)
-        # Outer join on TrialEventClass so test-class selections (NULL class_id)
-        # still appear; render "—" for class_name in that case.
         sels = (
             db.query(TrialEntrySelection, TrialEvent, TrialEventClass, Trial)
             .join(TrialEvent, TrialEntrySelection.trial_event_id == TrialEvent.id)
@@ -464,16 +469,37 @@ def entries_page(
             .filter(TrialEntrySelection.trial_entry_id == entry.id)
             .all()
         )
-        sel_list = [
-            {
+        sel_list = []
+        for sel, te, tec, trial in sels:
+            # Render a label for which event-side this selection is in
+            trial_label = ""
+            if sel.akc_trial_pref == "event_1":
+                if trial.governing_body == "AKC" and trial.akc_event_number:
+                    trial_label = f"Event 1 (#{trial.akc_event_number})"
+                elif trial.governing_body == "AHBA" and trial.ahba_event_1_judge:
+                    trial_label = f"Event 1 ({trial.ahba_event_1_judge})"
+                else:
+                    trial_label = "Event 1"
+            elif sel.akc_trial_pref == "event_2":
+                if trial.governing_body == "AKC" and trial.akc_event_number_2:
+                    trial_label = f"Event 2 (#{trial.akc_event_number_2})"
+                elif trial.governing_body == "AHBA" and trial.ahba_event_2_judge:
+                    trial_label = f"Event 2 ({trial.ahba_event_2_judge})"
+                else:
+                    trial_label = "Event 2"
+            sel_list.append({
                 "trial_event_name": te.name,
                 "class_name": tec.name if tec else "—",
                 "governing_body": trial.governing_body,
                 "call_number": sel.call_number,
-            }
-            for sel, te, tec, trial in sels
-        ]
-        trial_entries.append((entry, event, sel_list))
+                "trial_label": trial_label,
+                "day_preference": sel.day_preference,
+            })
+        bucket = (entry, event, sel_list)
+        if event and event.end_date >= cutoff_past:
+            trial_entries_upcoming.append(bucket)
+        else:
+            trial_entries_past.append(bucket)
 
     # Fetch fun run / smart dog day registrations
     registrations_raw = (
@@ -482,9 +508,23 @@ def entries_page(
         .order_by(Registration.id.desc())
         .all()
     )
-    registrations = [(reg, db.get(Event, reg.event_id)) for reg in registrations_raw]
+    registrations_upcoming = []
+    registrations_past = []
+    for reg in registrations_raw:
+        event = db.get(Event, reg.event_id)
+        reg_dogs = db.query(RegistrationDog).filter_by(registration_id=reg.id).all()
+        bucket = (reg, event, reg_dogs)
+        if event and event.end_date >= cutoff_past:
+            registrations_upcoming.append(bucket)
+        else:
+            registrations_past.append(bucket)
 
-    ctx.update({"trial_entries": trial_entries, "registrations": registrations})
+    ctx.update({
+        "trial_entries_upcoming": trial_entries_upcoming,
+        "trial_entries_past": trial_entries_past,
+        "registrations_upcoming": registrations_upcoming,
+        "registrations_past": registrations_past,
+    })
     return templates.TemplateResponse(request, "auth/entries.html", ctx)
 
 

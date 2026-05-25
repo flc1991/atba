@@ -81,9 +81,26 @@ def dashboard(
         .limit(10)
         .all()
     )
+    # Per-upcoming-event entry/registration counts (more actionable than the
+    # all-time totals at the top).
+    event_counts: dict[int, dict[str, int]] = {}
+    for ev in upcoming_events:
+        if ev.event_type == "trial":
+            event_counts[ev.id] = {
+                "label": "entries",
+                "count": db.query(TrialEntry).filter_by(event_id=ev.id).count(),
+            }
+        elif ev.event_type in ("fun_run", "smart_dog_day"):
+            event_counts[ev.id] = {
+                "label": "registrations",
+                "count": db.query(Registration).filter_by(event_id=ev.id).count(),
+            }
+        else:
+            event_counts[ev.id] = {"label": "", "count": 0}
     ctx = _admin_ctx(request, admin)
     ctx.update({
         "upcoming_events": upcoming_events,
+        "event_counts": event_counts,
         "recent_entries": recent_entries,
         "recent_regs": recent_regs,
         "total_entries": db.query(TrialEntry).count(),
@@ -103,9 +120,32 @@ def event_list(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    events = db.query(Event).filter(Event.is_deleted.is_(False)).order_by(Event.start_date.desc()).all()
+    from datetime import timedelta
+    today = date.today()
+    week_ago = today - timedelta(days=7)
+    month_ago = today - timedelta(days=30)
+
+    all_events = (
+        db.query(Event)
+        .filter(Event.is_deleted.is_(False))
+        .order_by(Event.start_date.asc())  # chronological
+        .all()
+    )
+    upcoming = [e for e in all_events if e.end_date >= week_ago]
+    completed_recent = [
+        e for e in all_events if month_ago <= e.end_date < week_ago
+    ]
+    completed_old = [e for e in all_events if e.end_date < month_ago]
+    # Reverse the completed lists so most-recent-first
+    completed_recent.reverse()
+    completed_old.reverse()
+
     ctx = _admin_ctx(request, admin)
-    ctx["events"] = events
+    ctx.update({
+        "upcoming_events": upcoming,
+        "completed_recent": completed_recent,
+        "completed_old": completed_old,
+    })
     return templates.TemplateResponse(request, "admin/event_list.html", ctx)
 
 
@@ -357,39 +397,92 @@ def trial_entries_list(
     entries = (
         db.query(TrialEntry)
         .filter_by(event_id=event_id)
-        .order_by(TrialEntry.id)
+        .order_by(TrialEntry.handler_name, TrialEntry.id)
         .all()
     )
-    # Load selections per entry for summary
-    entry_selections: dict[int, list] = {}
-    for entry in entries:
+
+    # Pre-load trial info for this event so we can render Event 1/2 labels
+    trials_for_event = db.query(Trial).filter_by(event_id=event_id).all()
+    trial_by_id = {t.id: t for t in trials_for_event}
+
+    def _build_selections(entry):
+        rows = []
         sels = db.query(TrialEntrySelection).filter_by(trial_entry_id=entry.id).all()
-        details = []
         for sel in sels:
             te = db.get(TrialEvent, sel.trial_event_id)
             if te is None:
-                continue  # orphaned selection — skip rather than 500
-            # Test classes (AKC tests, AHBA JHD) have NULL trial_event_class_id.
+                continue
+            trial = trial_by_id.get(te.trial_id)
             cls = (
                 db.get(TrialEventClass, sel.trial_event_class_id)
                 if sel.trial_event_class_id is not None else None
             )
-            trial = db.get(Trial, te.trial_id)
-            details.append({
-                "governing_body": trial.governing_body if trial else "",
-                "event_name": te.name,
-                "class_name": cls.name if cls else "",
-                "call_number": sel.call_number,
+            classes = db.query(TrialEventClass).filter_by(trial_event_id=te.id).order_by(TrialEventClass.sort_order).all()
+            # Trial-side label (Event 1 / Event 2 + identifier)
+            trial_label = ""
+            if sel.akc_trial_pref == "event_1":
+                if trial and trial.governing_body == "AKC" and trial.akc_event_number:
+                    trial_label = f"Event 1 (#{trial.akc_event_number})"
+                elif trial and trial.governing_body == "AHBA" and trial.ahba_event_1_judge:
+                    trial_label = f"Event 1 ({trial.ahba_event_1_judge})"
+                else:
+                    trial_label = "Event 1"
+            elif sel.akc_trial_pref == "event_2":
+                if trial and trial.governing_body == "AKC" and trial.akc_event_number_2:
+                    trial_label = f"Event 2 (#{trial.akc_event_number_2})"
+                elif trial and trial.governing_body == "AHBA" and trial.ahba_event_2_judge:
+                    trial_label = f"Event 2 ({trial.ahba_event_2_judge})"
+                else:
+                    trial_label = "Event 2"
+            rows.append({
                 "sel_id": sel.id,
+                "te_id": te.id,
+                "te_name": te.name,
+                "is_test_class": te.is_test_class,
+                "available_days": te.available_days or "",
+                "class_id": sel.trial_event_class_id,
+                "class_name": cls.name if cls else "",
+                "class_choices": [(c.id, c.name) for c in classes],
+                "akc_trial_pref": sel.akc_trial_pref or "event_1",
+                "trial_label": trial_label,
+                "day_preference": sel.day_preference or "",
+                "call_number": sel.call_number,
             })
-        entry_selections[entry.id] = details
+        return rows
+
+    # Group entries by governing body, then by user (handler_email lowercased).
+    sections: dict[str, dict] = {"AKC": {"groups": []}, "AHBA": {"groups": []}}
+    bodies = {body: {} for body in ("AKC", "AHBA")}
+    for entry in entries:
+        body = entry.governing_body
+        if body not in bodies:
+            continue
+        key = (entry.handler_email or "").strip().lower() or f"id:{entry.id}"
+        bodies[body].setdefault(key, {
+            "label": entry.handler_name + (f" <{entry.handler_email}>" if entry.handler_email else ""),
+            "email": entry.handler_email or "",
+            "name": entry.handler_name,
+            "entries": [],
+        })
+        bodies[body][key]["entries"].append({
+            "entry": entry,
+            "selections": _build_selections(entry),
+        })
+    for body in ("AKC", "AHBA"):
+        # Sort groups alphabetically by name
+        sections[body]["groups"] = sorted(
+            bodies[body].values(), key=lambda g: (g["name"] or "").lower()
+        )
+        sections[body]["count"] = sum(len(g["entries"]) for g in sections[body]["groups"])
+        sections[body]["trial"] = next(
+            (t for t in trials_for_event if t.governing_body == body), None
+        )
 
     trial_secretaries = db.query(User).filter_by(is_trial_secretary=True, is_active=True).all()
     ctx = _admin_ctx(request, admin)
     ctx.update({
         "event": event,
-        "entries": entries,
-        "entry_selections": entry_selections,
+        "sections": sections,
         "trial_secretaries": trial_secretaries,
     })
     return templates.TemplateResponse(request, "admin/trial_entries.html", ctx)
@@ -450,6 +543,85 @@ async def trial_entry_edit(
     return RedirectResponse(f"/admin/trial-entries/{entry_id}", status_code=303)
 
 
+@router.post("/trial-entries/{entry_id}/delete")
+async def trial_entry_delete(
+    entry_id: int,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    form = await request.form()
+    _validate_csrf(form.get("csrf_token", ""), request)
+    entry = _get_entry(entry_id, db)
+    event_id = entry.event_id
+    # Selections cascade via ondelete=CASCADE on TrialEntrySelection.trial_entry_id
+    db.delete(entry)
+    db.commit()
+    flash(request, f"Deleted entry for {entry.handler_name} / {entry.dog_name}.", "success")
+    return RedirectResponse(f"/admin/events/{event_id}/trial-entries", status_code=303)
+
+
+@router.post("/trial-entry-selections/{sel_id}/update")
+async def trial_entry_selection_update(
+    sel_id: int,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Update class_id / akc_trial_pref / day_preference on a single selection."""
+    form = await request.form()
+    _validate_csrf(form.get("csrf_token", ""), request)
+    sel = db.get(TrialEntrySelection, sel_id)
+    if not sel:
+        raise HTTPException(404)
+    entry = db.get(TrialEntry, sel.trial_entry_id)
+    te = db.get(TrialEvent, sel.trial_event_id)
+
+    raw_cls = (form.get("trial_event_class_id") or "").strip()
+    if raw_cls:
+        try:
+            cid = int(raw_cls)
+        except ValueError:
+            cid = None
+        if cid is not None:
+            valid_ids = {c.id for c in db.query(TrialEventClass).filter_by(trial_event_id=te.id).all()}
+            if cid in valid_ids:
+                sel.trial_event_class_id = cid
+    elif te.is_test_class:
+        sel.trial_event_class_id = None
+
+    pref = (form.get("akc_trial_pref") or "").strip()
+    if pref in ("event_1", "event_2"):
+        sel.akc_trial_pref = pref
+
+    day = (form.get("day_preference") or "").strip()
+    if day in ("friday", "saturday", "sunday", ""):
+        sel.day_preference = day or None
+
+    db.commit()
+    flash(request, "Selection updated.", "success")
+    return RedirectResponse(f"/admin/events/{entry.event_id}/trial-entries", status_code=303)
+
+
+@router.post("/trial-entry-selections/{sel_id}/delete")
+async def trial_entry_selection_delete(
+    sel_id: int,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    form = await request.form()
+    _validate_csrf(form.get("csrf_token", ""), request)
+    sel = db.get(TrialEntrySelection, sel_id)
+    if not sel:
+        raise HTTPException(404)
+    entry = db.get(TrialEntry, sel.trial_entry_id)
+    db.delete(sel)
+    db.commit()
+    flash(request, "Selection removed from entry.", "success")
+    return RedirectResponse(f"/admin/events/{entry.event_id}/trial-entries", status_code=303)
+
+
 # ----------------------------------------------------------------
 # Manual trial entry — full AKC/AHBA forms in admin mode
 # ----------------------------------------------------------------
@@ -469,6 +641,30 @@ def _manual_entry_ctx(request: Request, admin: User, db: Session, event_id: int,
         for te in trial_events
     }
     users = db.query(User).filter_by(is_active=True).order_by(User.name).all()
+
+    # Collect each user's dogs once, indexed by user_id, for the admin
+    # entry-form "load a saved dog" dropdown. JS filters to the selected user.
+    from app.models.dog import Dog
+    all_dogs = db.query(Dog).filter(Dog.user_id.in_([u.id for u in users])).all() if users else []
+    user_dogs_map: dict[int, list[dict]] = {}
+    for d in all_dogs:
+        user_dogs_map.setdefault(d.user_id, []).append({
+            "id": d.id,
+            "dog_name": d.dog_name or "",
+            "dog_call_name": d.dog_call_name or "",
+            "dog_breed": d.dog_breed or "",
+            "dog_sex": d.dog_sex or "",
+            "dog_dob": d.dog_dob.isoformat() if d.dog_dob else "",
+            "dog_sire": d.dog_sire or "",
+            "dog_dam": d.dog_dam or "",
+            "dog_breeder": d.dog_breeder or "",
+            "akc_number_type": d.akc_number_type or "",
+            "akc_registration_number": d.akc_registration_number or "",
+            "akc_foreign_country": d.akc_foreign_country or "",
+            "ahba_registration_number": d.ahba_registration_number or "",
+            "dog_place_of_birth": d.dog_place_of_birth or "",
+        })
+
     ctx = _admin_ctx(request, admin)
     ctx.update({
         "admin_mode": True,
@@ -477,7 +673,8 @@ def _manual_entry_ctx(request: Request, admin: User, db: Session, event_id: int,
         "trial_events": trial_events,
         "te_classes_map": te_classes_map,
         "users": users,
-        "saved_dogs": [],  # admin manual entry — no saved-dogs auto-fill
+        "user_dogs_map": user_dogs_map,
+        "saved_dogs": [],  # not used in admin mode; JS rebuilds from user_dogs_map
         "form_data": {},
         "countries": get_country_choices(),
         "csrf_token": _csrf(request),
@@ -881,8 +1078,15 @@ def member_list(
     db: Session = Depends(get_db),
 ):
     members = db.query(Member).order_by(Member.name).all()
+    # Pre-resolve linked-user names so the template can show "Jane Smith"
+    # instead of a raw user_id number.
+    user_ids = {m.user_id for m in members if m.user_id}
+    users_by_id = {
+        u.id: u for u in db.query(User).filter(User.id.in_(user_ids)).all()
+    } if user_ids else {}
     ctx = _admin_ctx(request, admin)
     ctx["members"] = members
+    ctx["users_by_id"] = users_by_id
     ctx["current_year"] = date.today().year
     return templates.TemplateResponse(request, "admin/member_list.html", ctx)
 

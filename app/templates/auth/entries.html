@@ -4,84 +4,189 @@
 {% block content %}
 <h1>My Entries</h1>
 
-{% if trial_entries or registrations %}
+<p style="background:#fef9e7; border-left:4px solid #f39c12; padding:0.75rem 1rem; border-radius:4px; max-width:680px;">
+  Questions or concerns about any entry below? Email the trial secretary at
+  <a href="mailto:info@atba-herding.org">info@atba-herding.org</a>.
+</p>
 
-  {% if trial_entries %}
-    <h2>Trial Entries</h2>
-    <div class="table-wrapper">
-      <table>
-        <thead>
-          <tr>
-            <th>Event</th>
-            <th>Dog</th>
-            <th>Governing Body</th>
-            <th>Entries</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for entry, event, selections in trial_entries %}
-            <tr>
-              <td>{{ event.title }}<br><small>{{ event.start_date.strftime('%B %d, %Y') }}</small></td>
-              <td>{{ entry.dog_name }}</td>
-              <td>
-                {% set bodies = selections | map(attribute='governing_body') | unique | list %}
-                {{ bodies | join(', ') }}
-              </td>
-              <td>
-                {% for sel in selections %}
-                  {{ sel.trial_event_name }} — {{ sel.class_name }}<br>
+{% macro paid_badge(rec, kind) -%}
+  {% if rec.is_paid %}
+    <span style="color:green;">&#10003; Paid</span>
+  {% else %}
+    <span style="color:#c0392b;">Pending payment</span>
+    <br><a href="/payments/checkout/{{ kind }}/{{ rec.id }}" class="btn btn-primary btn-sm" style="margin-top:0.25rem;">Pay Now</a>
+  {% endif %}
+{%- endmacro %}
+
+{% macro trial_entry_row(entry, event, selections) -%}
+  <tr>
+    <td>{{ event.title }}<br><small>{{ event.start_date.strftime('%B %d, %Y') }}</small></td>
+    <td>{{ entry.dog_name }}</td>
+    <td>{{ entry.governing_body }}</td>
+    <td>
+      {% if selections %}
+        <ul style="margin:0; padding-left:1.1rem; list-style:disc;">
+          {% for sel in selections %}
+            <li>
+              <strong>{{ sel.trial_event_name }}</strong>{% if sel.class_name and sel.class_name != '—' %} — {{ sel.class_name }}{% endif %}
+              {% if sel.trial_label %}<br><span style="font-size:0.85em; color:#666;">{{ sel.trial_label }}</span>{% endif %}
+              {% if sel.day_preference %}<span style="font-size:0.85em; color:#666;"> · {{ sel.day_preference | title }}</span>{% endif %}
+              {% if sel.call_number %}<span style="font-size:0.85em;"> · <strong>#{{ sel.call_number }}</strong></span>{% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}—{% endif %}
+    </td>
+    <td>{{ paid_badge(entry, 'entry') }}</td>
+  </tr>
+  <tr>
+    <td colspan="5" style="padding:0; border-top:none;">
+      <details style="margin:0 0 0.4rem;">
+        <summary style="cursor:pointer; color:#2c4a1e; font-size:0.9em; padding:0.4rem 0.5rem;">Show full entry details</summary>
+        <div style="padding:0.6rem 1rem; background:#fafafa; font-size:0.9em;">
+          <div style="display:grid; grid-template-columns:max-content 1fr; gap:0.3rem 1rem; max-width:680px;">
+            <strong>Handler:</strong>           <span>{{ entry.handler_name }}</span>
+            <strong>Email:</strong>             <span>{{ entry.handler_email or '—' }}</span>
+            <strong>Phone:</strong>             <span>{{ entry.handler_phone or '—' }}</span>
+            <strong>Address:</strong>
+            <span>
+              {{ entry.address_line1 or '—' }}{% if entry.address_line2 %}, {{ entry.address_line2 }}{% endif %}<br>
+              {{ entry.city or '' }}{% if entry.state_province %}, {{ entry.state_province }}{% endif %} {{ entry.postal_code or '' }}<br>
+              {{ entry.country or '' }}
+            </span>
+            <strong>Dog name:</strong>          <span>{{ entry.dog_name }}{% if entry.dog_call_name and entry.dog_call_name != entry.dog_name %} &ldquo;{{ entry.dog_call_name }}&rdquo;{% endif %}</span>
+            <strong>Breed:</strong>             <span>{{ entry.dog_breed or '—' }}</span>
+            <strong>Sex:</strong>               <span>{{ ({'M':'Male','F':'Female'}).get(entry.dog_sex, '—') }}</span>
+            <strong>Date of birth:</strong>     <span>{{ entry.dog_dob.strftime('%B %d, %Y') if entry.dog_dob else '—' }}</span>
+            <strong>Registration #:</strong>    <span>{% if entry.akc_number_type %}{{ entry.akc_number_type }} {% endif %}{{ entry.dog_registration_number or '—' }}</span>
+            {% if entry.akc_foreign_country %}<strong>Foreign country:</strong><span>{{ entry.akc_foreign_country }}</span>{% endif %}
+            {% if entry.dog_place_of_birth %}<strong>Place of birth:</strong><span>{{ entry.dog_place_of_birth }}</span>{% endif %}
+            <strong>Sire:</strong>              <span>{{ entry.dog_sire or '—' }}</span>
+            <strong>Dam:</strong>               <span>{{ entry.dog_dam or '—' }}</span>
+            <strong>Breeder:</strong>           <span>{{ entry.dog_breeder or '—' }}</span>
+            {% if entry.governing_body == 'AKC' and entry.akc_handler_name %}
+              <strong>Handler (ring):</strong>  <span>{{ entry.akc_handler_name }}</span>
+              <strong>Handler address:</strong> <span>{{ entry.akc_handler_address or '—' }}</span>
+            {% endif %}
+            {% if entry.governing_body == 'AHBA' and (entry.ahba_agent_name or entry.ahba_agent_email) %}
+              <strong>Agent:</strong>           <span>{{ entry.ahba_agent_name or '—' }}{% if entry.ahba_agent_email %} &lt;{{ entry.ahba_agent_email }}&gt;{% endif %}{% if entry.ahba_agent_phone %} · {{ entry.ahba_agent_phone }}{% endif %}</span>
+            {% endif %}
+            <strong>Total fee:</strong>         <span>${{ "%.2f" | format(entry.total_fee_cents / 100) }}</span>
+            <strong>Signature:</strong>         <span>{{ entry.signature or '—' }}</span>
+          </div>
+        </div>
+      </details>
+    </td>
+  </tr>
+{%- endmacro %}
+
+{% macro trial_table(items) -%}
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr><th>Event</th><th>Dog</th><th>Body</th><th>Selections</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        {% for entry, event, sels in items %}{{ trial_entry_row(entry, event, sels) }}{% endfor %}
+      </tbody>
+    </table>
+  </div>
+{%- endmacro %}
+
+{% macro reg_row(reg, event, reg_dogs) -%}
+  <tr>
+    <td>{{ event.title }}<br><small>{{ event.start_date.strftime('%B %d, %Y') }}</small></td>
+    <td>
+      {% if reg_dogs %}
+        {% for d in reg_dogs %}{{ d.dog_name }}{% if not loop.last %}<br>{% endif %}{% endfor %}
+      {% else %}{{ reg.dog_name }}{% endif %}
+    </td>
+    <td>${{ "%.2f" | format(reg.fee_cents / 100) }}</td>
+    <td>{{ paid_badge(reg, 'registration') }}</td>
+  </tr>
+  <tr>
+    <td colspan="4" style="padding:0; border-top:none;">
+      <details style="margin:0 0 0.4rem;">
+        <summary style="cursor:pointer; color:#2c4a1e; font-size:0.9em; padding:0.4rem 0.5rem;">Show full registration details</summary>
+        <div style="padding:0.6rem 1rem; background:#fafafa; font-size:0.9em;">
+          <div style="display:grid; grid-template-columns:max-content 1fr; gap:0.3rem 1rem; max-width:680px;">
+            <strong>Name:</strong>     <span>{{ reg.name }}</span>
+            <strong>Email:</strong>    <span>{{ reg.email or '—' }}</span>
+            <strong>Phone:</strong>    <span>{{ reg.phone or '—' }}</span>
+            <strong>Address:</strong>
+            <span>
+              {{ reg.address_line1 or '—' }}{% if reg.address_line2 %}, {{ reg.address_line2 }}{% endif %}<br>
+              {{ reg.city or '' }}{% if reg.state_province %}, {{ reg.state_province }}{% endif %} {{ reg.postal_code or '' }}<br>
+              {{ reg.country or '' }}
+            </span>
+            <strong>Rate:</strong>     <span>{{ reg.pricing_tier | replace('_',' ') | title }}</span>
+            <strong>Total fee:</strong><span>${{ "%.2f" | format(reg.fee_cents / 100) }}</span>
+          </div>
+          {% if reg_dogs %}
+            <div style="margin-top:0.5rem;">
+              <strong>Dogs &amp; runs:</strong>
+              <ul style="margin:0.25rem 0; padding-left:1.25rem;">
+                {% for d in reg_dogs %}
+                  <li>
+                    <strong>{{ d.dog_name }}</strong>{% if d.dog_breed %} — {{ d.dog_breed }}{% endif %}
+                    {% if d.entries %}
+                      <ul style="margin:0; padding-left:1rem; font-size:0.95em;">
+                        {% for name, judged in d.entries %}
+                          <li>{{ name }} <span style="color:#888;">({{ 'judged' if judged else 'unjudged' }})</span></li>
+                        {% endfor %}
+                      </ul>
+                    {% endif %}
+                  </li>
                 {% endfor %}
-              </td>
-              <td>
-                {% if entry.is_paid %}
-                  <span style="color:green;">&#10003; Paid</span>
-                {% else %}
-                  <span style="color:#c0392b;">Pending payment</span>
-                  <br><a href="/payments/checkout/entry/{{ entry.id }}" class="btn btn-primary btn-sm" style="margin-top:0.25rem;">Pay Now</a>
-                {% endif %}
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  {% endif %}
+              </ul>
+            </div>
+          {% endif %}
+        </div>
+      </details>
+    </td>
+  </tr>
+{%- endmacro %}
 
-  {% if registrations %}
-    <h2 style="margin-top:2rem;">Fun Run / Smart Dog Day Registrations</h2>
-    <div class="table-wrapper">
-      <table>
-        <thead>
-          <tr>
-            <th>Event</th>
-            <th>Dog</th>
-            <th>Fee</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for reg, event in registrations %}
-            <tr>
-              <td>{{ event.title }}<br><small>{{ event.start_date.strftime('%B %d, %Y') }}</small></td>
-              <td>{{ reg.dog_name }}</td>
-              <td>${{ "%.2f" | format(reg.fee_cents / 100) }}</td>
-              <td>
-                {% if reg.is_paid %}
-                  <span style="color:green;">&#10003; Paid</span>
-                {% else %}
-                  <span style="color:#c0392b;">Pending payment</span>
-                  <br><a href="/payments/checkout/registration/{{ reg.id }}" class="btn btn-primary btn-sm" style="margin-top:0.25rem;">Pay Now</a>
-                {% endif %}
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  {% endif %}
+{% macro reg_table(items) -%}
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr><th>Event</th><th>Dog(s)</th><th>Fee</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        {% for reg, event, reg_dogs in items %}{{ reg_row(reg, event, reg_dogs) }}{% endfor %}
+      </tbody>
+    </table>
+  </div>
+{%- endmacro %}
 
-{% else %}
+{% set has_any = trial_entries_upcoming or trial_entries_past or registrations_upcoming or registrations_past %}
+
+{% if not has_any %}
   <p>You have no entries yet. <a href="/events">Browse upcoming events</a>.</p>
+{% else %}
+
+  {% if trial_entries_upcoming %}
+    <h2>Trial Entries</h2>
+    {{ trial_table(trial_entries_upcoming) }}
+  {% endif %}
+
+  {% if registrations_upcoming %}
+    <h2 style="margin-top:2rem;">Fun Run / Smart Dog Day Registrations</h2>
+    {{ reg_table(registrations_upcoming) }}
+  {% endif %}
+
+  {% if trial_entries_past or registrations_past %}
+    <h2 style="margin-top:2.5rem;">Past Events</h2>
+    {% if trial_entries_past %}
+      <h3 style="margin-top:0.5rem;">Trial Entries</h3>
+      {{ trial_table(trial_entries_past) }}
+    {% endif %}
+    {% if registrations_past %}
+      <h3 style="margin-top:1rem;">Fun Run / Smart Dog Day Registrations</h3>
+      {{ reg_table(registrations_past) }}
+    {% endif %}
+  {% endif %}
+
 {% endif %}
 {% endblock %}

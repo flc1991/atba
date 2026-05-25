@@ -38,7 +38,7 @@
           <td>
             <form method="post" action="/admin/members/{{ m.id }}/set-status" style="display:inline;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <select name="status" onchange="this.form.submit()" style="font-size:0.85em;">
+              <select name="status" onchange="this.form.submit()" style="font-size:0.9em; min-width:120px;">
                 {% for s in ("member", "pending", "expired") %}
                   <option value="{{ s }}" {% if s == m.status %}selected{% endif %}>{{ s | title }}</option>
                 {% endfor %}
@@ -46,7 +46,12 @@
               <noscript><button type="submit" class="btn btn-sm">Set</button></noscript>
             </form>
           </td>
-          <td>{{ m.user_id or '—' }}</td>
+          <td>
+            {% set linked = users_by_id.get(m.user_id) if m.user_id else None %}
+            {% if linked %}
+              {{ linked.name }}{% if linked.email %} <span style="color:#777; font-size:0.85em;">&lt;{{ linked.email }}&gt;</span>{% endif %}
+            {% else %}—{% endif %}
+          </td>
           <td>
             <a href="/admin/members/{{ m.id }}/edit" class="btn btn-secondary btn-sm">Edit</a>
             <form method="post" action="/admin/members/{{ m.id }}/delete"

@@ -17,34 +17,26 @@
 
   {% if admin_mode %}
     <fieldset>
-      <legend>Admin options</legend>
-      <div class="form-row">
-        <div class="form-group">
-          <label for="user_id">Link to user account <span class="form-hint">(optional — fills fields below)</span></label>
-          <select id="user_id" name="user_id">
-            <option value="">— None —</option>
-            {% for u in users %}
-              <option value="{{ u.id }}"
-                data-name="{{ u.name or '' }}"
-                data-email="{{ u.email or '' }}"
-                data-phone="{{ u.phone or '' }}"
-                data-address-line1="{{ u.address_line1 or '' }}"
-                data-address-line2="{{ u.address_line2 or '' }}"
-                data-city="{{ u.city or '' }}"
-                data-state-province="{{ u.state_province or '' }}"
-                data-postal-code="{{ u.postal_code or '' }}"
-                data-country="{{ u.country or 'US' }}">
-                {{ u.name }} ({{ u.email }})
-              </option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="form-group">
-          <label style="display:flex; align-items:center; gap:0.5rem; margin-top:1.5rem;">
-            <input type="checkbox" name="is_paid" value="1" {% if form_data.get('is_paid') %}checked{% endif %}>
-            Mark as paid
-          </label>
-        </div>
+      <legend>Link to user account</legend>
+      <div class="form-group">
+        <label for="user_id">User <span class="form-hint">(optional — fills owner fields and lets you pick from this user's saved dogs)</span></label>
+        <select id="user_id" name="user_id">
+          <option value="">— None —</option>
+          {% for u in users %}
+            <option value="{{ u.id }}"
+              data-name="{{ u.name or '' }}"
+              data-email="{{ u.email or '' }}"
+              data-phone="{{ u.phone or '' }}"
+              data-address-line1="{{ u.address_line1 or '' }}"
+              data-address-line2="{{ u.address_line2 or '' }}"
+              data-city="{{ u.city or '' }}"
+              data-state-province="{{ u.state_province or '' }}"
+              data-postal-code="{{ u.postal_code or '' }}"
+              data-country="{{ u.country or 'US' }}">
+              {{ u.name }} ({{ u.email }})
+            </option>
+          {% endfor %}
+        </select>
       </div>
     </fieldset>
   {% endif %}
@@ -236,7 +228,15 @@
   <fieldset>
     <legend>Dog Information</legend>
 
-    {% if saved_dogs and not admin_mode %}
+    {% if admin_mode %}
+    <div class="form-group" id="admin-dog-selector-block"
+         style="margin-bottom:1rem; padding:0.75rem; background:#f0f8ff; border-left:4px solid #2980b9; border-radius:4px; {% if not user_dogs_map %}display:none;{% endif %}">
+      <label for="dog-selector" style="font-weight:600;">Load a saved dog:</label>
+      <select id="dog-selector" style="margin-top:0.25rem;" disabled>
+        <option value="">— pick a user first —</option>
+      </select>
+    </div>
+    {% elif saved_dogs %}
     <div class="form-group" style="margin-bottom:1rem; padding:0.75rem; background:#f0f8ff; border-left:4px solid #2980b9; border-radius:4px;">
       <label for="dog-selector" style="font-weight:600;">Load a saved dog:</label>
       <select id="dog-selector" style="margin-top:0.25rem;">
@@ -317,16 +317,25 @@
 
   {# ---- Signature & Submit ---- #}
   <fieldset>
-    <legend>Signature</legend>
-
-    <div class="form-group">
-      <label for="signature">
-        Signature (type your full name) {% if not admin_mode %}<span class="required">*</span>{% else %}<span class="form-hint">(optional)</span>{% endif %}
-        <span class="form-hint">{% if admin_mode %} — On-paper / phone entries; admin records what was on the signed paper form.{% else %} — Owner or authorized agent. I certify the above information is correct and I agree to abide by AHBA rules.{% endif %}</span>
-      </label>
-      <input type="text" id="signature" name="signature"
-             value="{{ form_data.signature or '' }}">
-    </div>
+    {% if not admin_mode %}
+      <legend>Signature</legend>
+      <div class="form-group">
+        <label for="signature">
+          Signature (type your full name) <span class="required">*</span>
+          <span class="form-hint"> — Owner or authorized agent. I certify the above information is correct and I agree to abide by AHBA rules.</span>
+        </label>
+        <input type="text" id="signature" name="signature"
+               value="{{ form_data.signature or '' }}">
+      </div>
+    {% else %}
+      <legend>Save</legend>
+      <div class="form-group">
+        <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;">
+          <input type="checkbox" name="is_paid" value="1" {% if form_data.get('is_paid') %}checked{% endif %}>
+          Mark this entry as paid
+        </label>
+      </div>
+    {% endif %}
 
     <button type="submit" id="submit-btn" class="btn btn-primary" style="margin-top:1rem; font-size:1.05em;">
       {% if admin_mode %}Save Entry{% else %}Continue to PayPal{% endif %}
@@ -350,6 +359,7 @@
     formId: 'entry-form',
     submitBtnId: 'submit-btn',
   };
+  {% if admin_mode %}window.adminUserDogs = {{ user_dogs_map | tojson }};{% endif %}
 </script>
 <script src="{{ url_for('static', path='js/trial_form.js') }}"></script>
 <script>
@@ -374,7 +384,42 @@
       setVal('postal_code', d.postalCode);
       var countryEl = document.getElementById('country');
       if (countryEl && d.country) countryEl.value = d.country;
+      rebuildAdminDogDropdown(this.value);
     });
+  }
+
+  function rebuildAdminDogDropdown(userId) {
+    var sel = document.getElementById('dog-selector');
+    var block = document.getElementById('admin-dog-selector-block');
+    if (!sel || !window.adminUserDogs) return;
+    sel.innerHTML = '';
+    var dogs = (userId && window.adminUserDogs[userId]) || [];
+    if (!dogs.length) {
+      sel.disabled = true;
+      sel.innerHTML = '<option value="">— no saved dogs for this user —</option>';
+      if (block) block.style.display = userId ? '' : 'none';
+      return;
+    }
+    sel.disabled = false;
+    var placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = '— select a dog —';
+    sel.appendChild(placeholder);
+    dogs.forEach(function (d) {
+      var opt = document.createElement('option');
+      opt.value = d.id;
+      opt.dataset.dogName = d.dog_name;
+      opt.dataset.breed = d.dog_breed;
+      opt.dataset.sex = d.dog_sex;
+      opt.dataset.sire = d.dog_sire;
+      opt.dataset.dam = d.dog_dam;
+      opt.dataset.breeder = d.dog_breeder;
+      opt.dataset.ahbaNum = d.ahba_registration_number;
+      opt.dataset.placeOfBirth = d.dog_place_of_birth;
+      opt.textContent = (d.dog_name || '(unnamed)') + (d.dog_breed ? ' — ' + d.dog_breed : '');
+      sel.appendChild(opt);
+    });
+    if (block) block.style.display = '';
   }
 
   // Dog selector pre-fill

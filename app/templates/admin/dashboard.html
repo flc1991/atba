@@ -4,35 +4,46 @@
 {% block admin_content %}
 <h1>Admin Dashboard</h1>
 
-<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:1rem; margin-bottom:2rem;">
+<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:1rem; margin-bottom:2rem;">
   <div style="background:#eafaf1; border-left:4px solid #2ecc71; padding:1rem; border-radius:4px;">
     <div style="font-size:2rem; font-weight:bold;">{{ total_entries }}</div>
     <div>Trial Entries</div>
+    <div style="font-size:0.8em; color:#555; margin-top:0.25rem;">All AKC/AHBA entries, every weekend, all time. Per-event counts below.</div>
   </div>
   <div style="background:#eaf4fb; border-left:4px solid #2980b9; padding:1rem; border-radius:4px;">
     <div style="font-size:2rem; font-weight:bold;">{{ total_regs }}</div>
     <div>Registrations</div>
+    <div style="font-size:0.8em; color:#555; margin-top:0.25rem;">All Fun Run + Smart Dog Day signups, all time.</div>
   </div>
   <div style="background:#fef9e7; border-left:4px solid #f39c12; padding:1rem; border-radius:4px;">
     <div style="font-size:2rem; font-weight:bold;">{{ total_members }}</div>
     <div>Members</div>
+    <div style="font-size:0.8em; color:#555; margin-top:0.25rem;">Active + pending + expired (any status).</div>
   </div>
 </div>
 
 <h2>Upcoming Events</h2>
 {% if upcoming_events %}
   <table>
-    <thead><tr><th>Date</th><th>Title</th><th>Type</th><th>Published</th><th></th></tr></thead>
+    <thead><tr><th>Date</th><th>Title</th><th>Type</th><th>Signups</th><th>Published</th><th></th></tr></thead>
     <tbody>
       {% for event in upcoming_events %}
+        {% set ec = event_counts.get(event.id, {"label": "", "count": 0}) %}
         <tr>
           <td>{{ event.start_date.strftime('%b %d, %Y') }}</td>
           <td>{{ event.title }}</td>
           <td>{{ event.event_type | replace('_',' ') | title }}</td>
+          <td>
+            {% if ec.label %}{{ ec.count }} {{ ec.label }}{% else %}<span style="color:#aaa;">—</span>{% endif %}
+          </td>
           <td>{{ '✓' if event.is_published else '—' }}</td>
           <td>
             <a href="/admin/events/{{ event.id }}/edit" class="btn btn-secondary btn-sm">Edit</a>
-            <a href="/admin/events/{{ event.id }}/trial-entries" class="btn btn-secondary btn-sm">Entries</a>
+            {% if event.event_type == 'trial' %}
+              <a href="/admin/events/{{ event.id }}/trial-entries" class="btn btn-secondary btn-sm">Entries</a>
+            {% elif event.event_type in ('fun_run','smart_dog_day') %}
+              <a href="/admin/events/{{ event.id }}/registrations" class="btn btn-secondary btn-sm">Regs</a>
+            {% endif %}
           </td>
         </tr>
       {% endfor %}

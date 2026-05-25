@@ -384,12 +384,28 @@ async def akc_entry_post(
     db.commit()
     db.refresh(entry)
 
-    # Optionally save dog to user's account
+    # Optionally save (or merge into existing) dog on user's account
     if current_user and form.get("save_dog"):
         existing_dog = db.query(Dog).filter_by(
             user_id=current_user.id, dog_name=dog_name
         ).first()
-        if not existing_dog:
+        if existing_dog:
+            # Merge: only update empty fields on the existing record. Keeps
+            # AHBA fields the user already saved when re-saving from AKC.
+            def _merge(attr, value):
+                if value and not getattr(existing_dog, attr):
+                    setattr(existing_dog, attr, value)
+            _merge("dog_call_name", dog_call_name if dog_call_name != dog_name else None)
+            _merge("dog_breed", dog_breed)
+            _merge("dog_sex", dog_sex)
+            _merge("dog_dob", dog_dob)
+            _merge("dog_sire", dog_sire)
+            _merge("dog_dam", dog_dam)
+            _merge("dog_breeder", dog_breeder)
+            _merge("akc_number_type", akc_number_type)
+            _merge("akc_registration_number", dog_reg_number)
+            _merge("akc_foreign_country", akc_foreign_country)
+        else:
             db.add(Dog(
                 user_id=current_user.id,
                 dog_name=dog_name,
@@ -404,7 +420,7 @@ async def akc_entry_post(
                 akc_registration_number=dog_reg_number,
                 akc_foreign_country=akc_foreign_country,
             ))
-            db.commit()
+        db.commit()
 
     return RedirectResponse(
         f"/payments/checkout/entry/{entry.id}",
@@ -604,12 +620,25 @@ async def ahba_entry_post(
     db.commit()
     db.refresh(entry)
 
-    # Optionally save dog to user's account
+    # Optionally save (or merge into existing) dog on user's account
     if current_user and form.get("save_dog"):
         existing_dog = db.query(Dog).filter_by(
             user_id=current_user.id, dog_name=dog_name
         ).first()
-        if not existing_dog:
+        if existing_dog:
+            # Merge AHBA-specific fields into a dog that may already exist
+            # from an AKC save. Only fills empty fields, never overwrites.
+            def _merge(attr, value):
+                if value and not getattr(existing_dog, attr):
+                    setattr(existing_dog, attr, value)
+            _merge("dog_breed", dog_breed)
+            _merge("dog_sex", dog_sex)
+            _merge("dog_sire", dog_sire)
+            _merge("dog_dam", dog_dam)
+            _merge("dog_breeder", dog_breeder)
+            _merge("ahba_registration_number", dog_reg_number)
+            _merge("dog_place_of_birth", dog_place_of_birth)
+        else:
             db.add(Dog(
                 user_id=current_user.id,
                 dog_name=dog_name,
@@ -621,7 +650,7 @@ async def ahba_entry_post(
                 ahba_registration_number=dog_reg_number,
                 dog_place_of_birth=dog_place_of_birth,
             ))
-            db.commit()
+        db.commit()
 
     return RedirectResponse(
         f"/payments/checkout/entry/{entry.id}",
