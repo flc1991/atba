@@ -9,62 +9,104 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
   {# ---- Event Selections ---- #}
+  {% set has_e2 = trial.ahba_event_2_judge is not none %}
+  {% macro class_cell(te, side) -%}
+    {% if te.is_test_class %}
+      <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer;">
+        <input type="checkbox" name="enter_te_{{ side }}_{{ te.id }}" value="1"
+               class="te-enter-check" data-side="{{ side }}"
+               {% if form_data.get('enter_te_' ~ side ~ '_' ~ te.id|string) %}checked{% endif %}>
+        Enter
+      </label>
+    {% else %}
+      <select name="class_{{ side }}_{{ te.id }}" class="class-select" data-side="{{ side }}" style="min-width:90px;">
+        <option value="">— no entry —</option>
+        {% for cls in te_classes_map[te.id] %}
+          <option value="{{ cls.id }}"
+            {% if form_data.get('class_' ~ side ~ '_' ~ te.id|string) == cls.id|string %}selected{% endif %}>
+            {{ cls.name }}
+          </option>
+        {% endfor %}
+      </select>
+    {% endif %}
+  {%- endmacro %}
+  {% macro day_pref_cell(te, side) -%}
+    {% set day_val = form_data.get('day_pref_' ~ side ~ '_' ~ te.id|string, '') %}
+    <label style="display:block; white-space:nowrap; font-size:0.85rem;">
+      <input type="radio" name="day_pref_{{ side }}_{{ te.id }}" value=""
+             {% if day_val == '' %}checked{% endif %}> No Pref
+    </label>
+    <label style="display:block; white-space:nowrap; font-size:0.85rem;">
+      <input type="radio" name="day_pref_{{ side }}_{{ te.id }}" value="saturday"
+             {% if day_val == 'saturday' %}checked{% endif %}> Sat
+    </label>
+    <label style="display:block; white-space:nowrap; font-size:0.85rem;">
+      <input type="radio" name="day_pref_{{ side }}_{{ te.id }}" value="sunday"
+             {% if day_val == 'sunday' %}checked{% endif %}> Sun
+    </label>
+  {%- endmacro %}
+
   <fieldset>
     <legend>Event Selections</legend>
     <p style="font-size:0.9rem; color:#555;">
-      Select a class for trial events (I, II, III) or check the box for JHD test classes.
+      {% if has_e2 %}Each event may be entered with either trial/judge, or both — pick the class and day preference independently per event. AHBA runs Saturday &amp; Sunday.
+      {% else %}Select a class for trial events (I, II, III) or check the box for JHD test classes. AHBA runs Saturday &amp; Sunday — pick a day preference (or No Pref) for each entry.{% endif %}
     </p>
 
     {% if trial_events %}
-      <table style="width:100%; border-collapse:collapse; font-size:0.95rem;">
-        <thead>
-          <tr style="border-bottom:2px solid #2c6e2e; text-align:left;">
-            <th style="padding:0.4rem 0.5rem;">Event</th>
-            <th style="padding:0.4rem 0.5rem;">Class / Enter</th>
-            <th style="padding:0.4rem 0.5rem; text-align:right;">Fee</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for te in trial_events %}
-            <tr class="te-row"
-                data-te-id="{{ te.id }}"
-                data-fee="{{ te.fee_cents }}"
-                data-is-test="{{ 'true' if te.is_test_class else 'false' }}"
-                style="border-bottom:1px solid #eee;">
-              <td style="padding:0.5rem;"><strong>{{ te.name }}</strong></td>
-              <td style="padding:0.5rem;">
-                {% if te.is_test_class %}
-                  <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer;">
-                    <input type="checkbox" name="enter_te_{{ te.id }}" value="1"
-                           class="te-enter-check"
-                           {% if form_data.get('enter_te_' ~ te.id|string) %}checked{% endif %}>
-                    Enter
-                  </label>
-                {% else %}
-                  <select name="class_{{ te.id }}" class="class-select" style="max-width:120px;">
-                    <option value="">— no entry —</option>
-                    {% for cls in te_classes_map[te.id] %}
-                      <option value="{{ cls.id }}"
-                        {% if form_data.get('class_' ~ te.id|string) == cls.id|string %}selected{% endif %}>
-                        {{ cls.name }}
-                      </option>
-                    {% endfor %}
-                  </select>
-                {% endif %}
-              </td>
-              <td style="padding:0.5rem; text-align:right; white-space:nowrap;">
-                ${{ "%.2f" | format(te.fee_cents / 100) }}
-              </td>
+      <div style="overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse; font-size:0.95rem; min-width:560px;">
+          <thead>
+            {% if has_e2 %}
+              <tr style="background:#f0f0f0; text-align:center; font-size:0.85rem;">
+                <th></th>
+                <th colspan="2" style="padding:0.3rem; border-right:1px solid #ccc;">Event 1 <span style="color:#666;">({{ trial.ahba_event_1_judge }})</span></th>
+                <th colspan="2" style="padding:0.3rem;">Event 2 <span style="color:#666;">({{ trial.ahba_event_2_judge }})</span></th>
+                <th></th>
+              </tr>
+            {% endif %}
+            <tr style="border-bottom:2px solid #2c6e2e; text-align:left;">
+              <th style="padding:0.4rem 0.5rem;">Event</th>
+              <th style="padding:0.4rem 0.5rem;">Class / Enter</th>
+              <th style="padding:0.4rem 0.5rem;{% if has_e2 %} border-right:1px solid #ccc;{% endif %}">Day Pref.</th>
+              {% if has_e2 %}
+                <th style="padding:0.4rem 0.5rem;">Class / Enter</th>
+                <th style="padding:0.4rem 0.5rem;">Day Pref.</th>
+              {% endif %}
+              <th style="padding:0.4rem 0.5rem; text-align:right;">Fee</th>
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for te in trial_events %}
+              <tr class="te-row"
+                  data-te-id="{{ te.id }}"
+                  data-fee="{{ te.fee_cents }}"
+                  data-is-test="{{ 'true' if te.is_test_class else 'false' }}"
+                  style="border-bottom:1px solid #eee;">
+                <td style="padding:0.5rem;"><strong>{{ te.name }}</strong></td>
+                <td style="padding:0.5rem;">{{ class_cell(te, 'e1') }}</td>
+                <td style="padding:0.5rem;{% if has_e2 %} border-right:1px solid #ccc;{% endif %}">{{ day_pref_cell(te, 'e1') }}</td>
+                {% if has_e2 %}
+                  <td style="padding:0.5rem;">{{ class_cell(te, 'e2') }}</td>
+                  <td style="padding:0.5rem;">{{ day_pref_cell(te, 'e2') }}</td>
+                {% endif %}
+                <td style="padding:0.5rem; text-align:right; white-space:nowrap;">
+                  ${{ "%.2f" | format(te.fee_cents / 100) }}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     {% else %}
       <p><em>No events have been configured for this trial yet.</em></p>
     {% endif %}
 
     <div style="margin-top:1rem; padding:0.75rem 1rem; background:#f0f8ff; border-left:4px solid #2980b9; border-radius:4px;">
       <strong>Total due: $<span id="total-display">0.00</span></strong>
+      {% if has_e2 %}
+        <span style="font-size:0.85rem; color:#555;"> — entering the same event in both trials charges the fee twice</span>
+      {% endif %}
     </div>
   </fieldset>
 
@@ -263,7 +305,6 @@
     eventId: {{ event.id }},
     formId: 'entry-form',
     submitBtnId: 'submit-btn',
-    hasEventPref: false,
   };
 </script>
 <script src="{{ url_for('static', path='js/trial_form.js') }}"></script>

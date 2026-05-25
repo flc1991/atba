@@ -92,12 +92,13 @@ a  { color: #2c4a1e; }
 a:hover { text-decoration: underline; }
 
 /* ----- Hero section ----- */
-.hero { display: flex; gap: 1.5rem; margin-bottom: 2rem; flex-wrap: wrap; }
-.hero-photos { display: flex; gap: 0.5rem; flex: 1 1 380px; }
+.hero { display: flex; gap: 2rem; margin-bottom: 2rem; flex-wrap: wrap; align-items: stretch; }
+.hero-photos { display: flex; gap: 0.75rem; flex: 1 1 380px; }
 .hero-img { width: 50%; object-fit: cover; border-radius: 6px; max-height: 240px; }
 .hero-img-secondary { display: block; }
-.hero-text { flex: 1 1 280px; display: flex; flex-direction: column; justify-content: center; gap: 0.75rem; }
+.hero-text { flex: 1 1 280px; display: flex; flex-direction: column; justify-content: center; gap: 0.85rem; }
 .hero-text h1 { margin-bottom: 0.25rem; }
+.hero-buttons { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 0.25rem; }
 
 /* ----- Event cards ----- */
 .upcoming-events { margin-top: 1rem; }

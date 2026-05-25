@@ -51,8 +51,9 @@ def event_detail(
     ctx["event"] = event
 
     if event.event_type == "trial":
+        # AKC sorts before AHBA (descending alpha) since AKC runs first in a trial weekend.
         trials = (
-            db.query(Trial).filter_by(event_id=event_id).order_by(Trial.governing_body).all()
+            db.query(Trial).filter_by(event_id=event_id).order_by(Trial.governing_body.desc()).all()
         )
         trial_statuses = {t.id: get_trial_status(t.reg_close_dt) for t in trials}
         any_trial_open = any(s == "open" for s in trial_statuses.values())

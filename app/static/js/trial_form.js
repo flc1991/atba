@@ -4,49 +4,41 @@
  * and validates the form before submit.
  *
  * Expects window.trialFormConfig to be set before this script runs:
- *   window.trialFormConfig = {
- *     eventId, formId, submitBtnId,
- *     hasEventPref   // true for AKC with two event numbers
- *   };
+ *   window.trialFormConfig = { eventId, formId, submitBtnId };
+ *
+ * Per-row fee = fee_cents × (1 if E1 entered else 0) + (1 if E2 entered else 0).
+ * E1/E2 are detected by data-side="e1" / data-side="e2" on the row's class
+ * select or test-entry checkbox.
  *
  * Each event row is a <tr class="te-row"> with:
  *   data-te-id      = TrialEvent.id
  *   data-fee        = fee in cents
  *   data-is-test    = "true"|"false"
  *   data-avail-days = "either"|"friday"|"saturday"|"" (AKC only)
- *
- * AKC "Enter In" uses checkboxes: akc_ev1_{id} and akc_ev2_{id}
- *   - both checked → fee × 2
- *   - one checked  → fee × 1
- *   - neither      → fee × 1 (defaults to event 1)
  */
 (function () {
   var cfg = window.trialFormConfig || {};
-  var hasEventPref = !!cfg.hasEventPref;
   var totalDisplay = document.getElementById('total-display');
 
-  function isRowEntered(row) {
-    var isTest = row.dataset.isTest === 'true';
-    if (isTest) {
-      var cb = row.querySelector('input[type="checkbox"].te-enter-check');
-      return cb && cb.checked;
-    } else {
-      var sel = row.querySelector('select.class-select');
-      return sel && sel.value !== '';
+  // A side ("e1" or "e2") is "entered" for a row if a class is selected (trial
+  // class) or the Enter checkbox is checked (test class).
+  function isSideEntered(row, side) {
+    var inputs = row.querySelectorAll('[data-side="' + side + '"]');
+    for (var i = 0; i < inputs.length; i++) {
+      var el = inputs[i];
+      if (el.tagName === 'SELECT') {
+        if (el.value !== '') return true;
+      } else if (el.type === 'checkbox') {
+        if (el.checked) return true;
+      }
     }
+    return false;
   }
 
   function rowFeeCents(row) {
-    if (!isRowEntered(row)) return 0;
     var fee = parseInt(row.dataset.fee, 10) || 0;
-    if (!hasEventPref) return fee;
-
-    // AKC: count how many event checkboxes are checked
-    var teId = row.dataset.teId;
-    var ev1 = row.querySelector('input[name="akc_ev1_' + teId + '"]');
-    var ev2 = row.querySelector('input[name="akc_ev2_' + teId + '"]');
-    var count = (ev1 && ev1.checked ? 1 : 0) + (ev2 && ev2.checked ? 1 : 0);
-    return fee * (count > 0 ? count : 1);  // default to 1 if neither checked
+    var count = (isSideEntered(row, 'e1') ? 1 : 0) + (isSideEntered(row, 'e2') ? 1 : 0);
+    return fee * count;
   }
 
   function computeFeeCents() {
@@ -63,24 +55,9 @@
     }
   }
 
-  // Attach change listeners to all rows
-  document.querySelectorAll('tr.te-row').forEach(function (row) {
-    var teId = row.dataset.teId;
-
-    // Class select or test checkbox
-    var classSelect = row.querySelector('select.class-select');
-    var enterCheck = row.querySelector('input[type="checkbox"].te-enter-check');
-
-    if (classSelect) classSelect.addEventListener('change', updateTotal);
-    if (enterCheck) enterCheck.addEventListener('change', updateTotal);
-
-    // AKC event checkboxes (akc_ev1_X, akc_ev2_X)
-    if (hasEventPref) {
-      var ev1 = row.querySelector('input[name="akc_ev1_' + teId + '"]');
-      var ev2 = row.querySelector('input[name="akc_ev2_' + teId + '"]');
-      if (ev1) ev1.addEventListener('change', updateTotal);
-      if (ev2) ev2.addEventListener('change', updateTotal);
-    }
+  // Attach change listeners to every side-tagged class select / enter checkbox.
+  document.querySelectorAll('tr.te-row [data-side]').forEach(function (el) {
+    el.addEventListener('change', updateTotal);
   });
 
   updateTotal();

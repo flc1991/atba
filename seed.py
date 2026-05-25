@@ -35,8 +35,8 @@ def _add_akc_trial_events(db: Session, trial_id: int) -> None:
         ("Duck B",   "either",   6000, 1),
         ("Goose B",  "either",   6000, 2),
         ("Sheep A",  "either",   6000, 3),
-        ("Sheep B",  "saturday", 6000, 4),
-        ("Sheep C",  "saturday", 7500, 5),
+        ("Sheep B",  "either",   6000, 4),
+        ("Sheep C",  "either",   7500, 5),
         ("Sheep D",  "friday",   7500, 6),
     ]
     for name, days, fee, sort in trial_classes:
@@ -101,6 +101,70 @@ def _add_ahba_trial_events(db: Session, trial_id: int) -> None:
         ))
 
 
+def _backfill_trial_fields(db: Session) -> None:
+    """One-time backfills for fields/descriptions added after initial seeding.
+
+    Each block updates ONLY when the existing value is NULL or matches the prior
+    seed default — preserving any admin edits made via the UI.
+    """
+    # --- AKC trial numbers for July & October (added 2026-05-23) ---
+    for ev_title, num1, num2 in [
+        ("2026 July Trial Weekend",    "2026226905", "2026226906"),
+        ("2026 October Trial Weekend", "2026226907", "2026226908"),
+    ]:
+        ev = db.query(Event).filter_by(title=ev_title).first()
+        if not ev:
+            continue
+        akc = db.query(Trial).filter_by(event_id=ev.id, governing_body="AKC").first()
+        if akc and akc.akc_event_number is None:
+            akc.akc_event_number = num1
+        if akc and akc.akc_event_number_2 is None:
+            akc.akc_event_number_2 = num2
+
+    # --- AHBA judges (added 2026-05-23) ---
+    for ev_title, judge_1, judge_2 in [
+        ("2026 April Trial Weekend", "Carolyn Wilki", None),
+        ("2026 July Trial Weekend",  "Brian Wistrom", "Carolyn Wilki"),
+    ]:
+        ev = db.query(Event).filter_by(title=ev_title).first()
+        if not ev:
+            continue
+        ahba = db.query(Trial).filter_by(event_id=ev.id, governing_body="AHBA").first()
+        if not ahba:
+            continue
+        if ahba.ahba_event_1_judge is None and judge_1:
+            ahba.ahba_event_1_judge = judge_1
+        if ahba.ahba_event_2_judge is None and judge_2:
+            ahba.ahba_event_2_judge = judge_2
+
+    # --- Trial weekend descriptions: insert newline between AKC and AHBA paragraphs ---
+    # Only rewrite if the description still matches the old single-paragraph default.
+    description_backfills = {
+        "2026 April Trial Weekend": (
+            "AKC Herding Tests & Trials (Events 1 & 2) — Friday April 17 and Saturday April 18. "
+            "AHBA Trial — Sunday April 19. Sheep, Ducks, and Geese.",
+            "AKC Herding Tests & Trials (Events 1 & 2) — Friday April 17 and Saturday April 18.\n"
+            "AHBA Trial — Sunday April 19. Sheep, Ducks, and Geese."
+        ),
+        "2026 July Trial Weekend": (
+            "AKC Herding Tests & Trials (Events 1 & 2) — Friday July 10 and Saturday July 11. "
+            "AHBA Trial — Sunday July 12. Sheep and Ducks.",
+            "AKC Herding Tests & Trials (Events 1 & 2) — Friday July 10 and Saturday July 11.\n"
+            "AHBA Trials (Events 1 & 2) — Saturday July 11 and Sunday July 12. Sheep and Ducks."
+        ),
+        "2026 October Trial Weekend": (
+            "AKC Herding Tests & Trials (Events 1 & 2) — Friday Oct 16 and Saturday Oct 17. "
+            "AHBA Trial — Sunday Oct 18. Sheep and Ducks.",
+            "AKC Herding Tests & Trials (Events 1 & 2) — Friday Oct 16 and Saturday Oct 17.\n"
+            "AHBA Trials (Events 1 & 2) — Saturday Oct 17 and Sunday Oct 18. Sheep and Ducks."
+        ),
+    }
+    for ev_title, (old_desc, new_desc) in description_backfills.items():
+        ev = db.query(Event).filter_by(title=ev_title).first()
+        if ev and ev.description == old_desc:
+            ev.description = new_desc
+
+
 def seed(db: Session) -> None:
     # ------------------------------------------------------------------ admin user
     if not db.query(User).filter_by(email="admin@atba-herding.org").first():
@@ -151,7 +215,7 @@ def seed(db: Session) -> None:
             end_date=date(2026, 4, 19),
             location=LOCATION,
             description=(
-                "AKC Herding Tests & Trials (Events 1 & 2) — Friday April 17 and Saturday April 18. "
+                "AKC Herding Tests & Trials (Events 1 & 2) — Friday April 17 and Saturday April 18.\n"
                 "AHBA Trial — Sunday April 19. Sheep, Ducks, and Geese."
             ),
             is_published=True,
@@ -173,6 +237,7 @@ def seed(db: Session) -> None:
         ahba = Trial(
             event_id=april_trial.id,
             governing_body="AHBA",
+            ahba_event_1_judge="Carolyn Wilki",
             reg_close_dt=compute_ahba_close(date(2026, 4, 19)),
         )
         db.add(ahba)
@@ -242,8 +307,8 @@ def seed(db: Session) -> None:
             end_date=date(2026, 7, 12),
             location=LOCATION,
             description=(
-                "AKC Herding Tests & Trials (Events 1 & 2) — Friday July 10 and Saturday July 11. "
-                "AHBA Trial — Sunday July 12. Sheep and Ducks."
+                "AKC Herding Tests & Trials (Events 1 & 2) — Friday July 10 and Saturday July 11.\n"
+                "AHBA Trials (Events 1 & 2) — Saturday July 11 and Sunday July 12. Sheep and Ducks."
             ),
             is_published=True,
         )
@@ -256,6 +321,8 @@ def seed(db: Session) -> None:
         july_akc = Trial(
             event_id=july_trial.id,
             governing_body="AKC",
+            akc_event_number="2026226905",
+            akc_event_number_2="2026226906",
             reg_close_dt=compute_akc_close(date(2026, 7, 10)),
         )
         db.add(july_akc)
@@ -263,12 +330,14 @@ def seed(db: Session) -> None:
     if not db.query(TrialEvent).filter_by(trial_id=july_akc.id).first():
         _add_akc_trial_events(db, july_akc.id)
 
-    # Ensure July AHBA trial + events exist
+    # Ensure July AHBA trial + events exist (two judges = two AHBA trials per weekend)
     july_ahba = db.query(Trial).filter_by(event_id=july_trial.id, governing_body="AHBA").first()
     if not july_ahba:
         july_ahba = Trial(
             event_id=july_trial.id,
             governing_body="AHBA",
+            ahba_event_1_judge="Brian Wistrom",
+            ahba_event_2_judge="Carolyn Wilki",
             reg_close_dt=compute_ahba_close(date(2026, 7, 12)),
         )
         db.add(july_ahba)
@@ -302,8 +371,8 @@ def seed(db: Session) -> None:
             end_date=date(2026, 10, 18),
             location=LOCATION,
             description=(
-                "AKC Herding Tests & Trials (Events 1 & 2) — Friday Oct 16 and Saturday Oct 17. "
-                "AHBA Trial — Sunday Oct 18. Sheep and Ducks."
+                "AKC Herding Tests & Trials (Events 1 & 2) — Friday Oct 16 and Saturday Oct 17.\n"
+                "AHBA Trials (Events 1 & 2) — Saturday Oct 17 and Sunday Oct 18. Sheep and Ducks."
             ),
             is_published=True,
         )
@@ -311,9 +380,21 @@ def seed(db: Session) -> None:
         db.flush()
 
     if not db.query(Trial).filter_by(event_id=oct_trial.id, governing_body="AKC").first():
-        db.add(Trial(event_id=oct_trial.id, governing_body="AKC", reg_close_dt=None))
+        db.add(Trial(
+            event_id=oct_trial.id,
+            governing_body="AKC",
+            akc_event_number="2026226907",
+            akc_event_number_2="2026226908",
+            reg_close_dt=None,
+        ))
     if not db.query(Trial).filter_by(event_id=oct_trial.id, governing_body="AHBA").first():
         db.add(Trial(event_id=oct_trial.id, governing_body="AHBA", reg_close_dt=None))
+
+    # ------------------------------------------------------------------ backfills
+    # One-off backfill for fields added after initial seeding. Only updates rows
+    # where the value is still NULL / matches the OLD seed default, so admin
+    # edits via the UI are preserved.
+    _backfill_trial_fields(db)
 
     # ------------------------------------------------------------------ members
     for name, year in [

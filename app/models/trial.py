@@ -20,8 +20,12 @@ class Trial(Base):
         Integer, ForeignKey("events.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     governing_body: Mapped[str] = mapped_column(String(10), nullable=False)  # 'AKC' | 'AHBA'
+    # AKC has two simultaneous trials per weekend identified by event number.
     akc_event_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
     akc_event_number_2: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # AHBA can also have two simultaneous trials per weekend; differentiated by judge.
+    ahba_event_1_judge: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    ahba_event_2_judge: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Registration close datetime (UTC). Computed from start_date but admin-overridable.
     reg_close_dt: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -141,8 +145,13 @@ class TrialEntrySelection(Base):
     """Which class a dog is entered in for a specific trial event."""
 
     __tablename__ = "trial_entry_selections"
+    # A handler may enter the same event in BOTH trials of a weekend
+    # (Event 1 + Event 2), so the uniqueness key includes akc_trial_pref.
     __table_args__ = (
-        UniqueConstraint("trial_entry_id", "trial_event_id", name="uq_entry_event"),
+        UniqueConstraint(
+            "trial_entry_id", "trial_event_id", "akc_trial_pref",
+            name="uq_entry_event_pref",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

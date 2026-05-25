@@ -212,23 +212,78 @@
   </fieldset>
 
   {# ---- Class / Event Selections ---- #}
+  {% set has_e2 = trial.akc_event_number_2 is not none %}
+  {% macro class_cell(te, side) -%}
+    {% if te.is_test_class %}
+      <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer;">
+        <input type="checkbox" name="enter_te_{{ side }}_{{ te.id }}" value="1"
+               class="te-enter-check" data-side="{{ side }}"
+               {% if form_data.get('enter_te_' ~ side ~ '_' ~ te.id|string) %}checked{% endif %}>
+        Enter
+      </label>
+    {% else %}
+      <select name="class_{{ side }}_{{ te.id }}" class="class-select" data-side="{{ side }}" style="min-width:140px;">
+        <option value="">— no entry —</option>
+        {% for cls in te_classes_map[te.id] %}
+          <option value="{{ cls.id }}"
+            {% if form_data.get('class_' ~ side ~ '_' ~ te.id|string) == cls.id|string %}selected{% endif %}>
+            {{ cls.name }}
+          </option>
+        {% endfor %}
+      </select>
+    {% endif %}
+  {%- endmacro %}
+  {% macro day_pref_cell(te, side) -%}
+    {% if te.available_days == 'either' %}
+      {% set day_val = form_data.get('day_pref_' ~ side ~ '_' ~ te.id|string, '') %}
+      <label style="display:block; white-space:nowrap; font-size:0.85rem;">
+        <input type="radio" name="day_pref_{{ side }}_{{ te.id }}" value=""
+               {% if day_val == '' %}checked{% endif %}> No Pref
+      </label>
+      <label style="display:block; white-space:nowrap; font-size:0.85rem;">
+        <input type="radio" name="day_pref_{{ side }}_{{ te.id }}" value="friday"
+               {% if day_val == 'friday' %}checked{% endif %}> Fri
+      </label>
+      <label style="display:block; white-space:nowrap; font-size:0.85rem;">
+        <input type="radio" name="day_pref_{{ side }}_{{ te.id }}" value="saturday"
+               {% if day_val == 'saturday' %}checked{% endif %}> Sat
+      </label>
+    {% elif te.available_days == 'friday' %}
+      <span style="color:#555; font-size:0.85rem;">Fri only</span>
+    {% elif te.available_days == 'saturday' %}
+      <span style="color:#555; font-size:0.85rem;">Sat only</span>
+    {% else %}
+      <span style="color:#aaa; font-size:0.85rem;">—</span>
+    {% endif %}
+  {%- endmacro %}
+
   <fieldset>
     <legend>Class &amp; Event Selections</legend>
     <p style="font-size:0.9rem; color:#555;">
-      Select a class (or check the box for test classes). Choose which event number(s) and day preference where applicable.
+      {% if has_e2 %}Each event may be entered in Event 1, Event 2, or both — pick the class and day preference independently per event.
+      {% else %}Select a class (or check the box for test classes) and day preference where applicable.{% endif %}
     </p>
 
     {% if trial_events %}
       <div style="overflow-x:auto;">
         <table style="width:100%; border-collapse:collapse; font-size:0.9rem; min-width:560px;">
           <thead>
+            {% if has_e2 %}
+              <tr style="background:#f0f0f0; text-align:center; font-size:0.85rem;">
+                <th></th>
+                <th colspan="2" style="padding:0.3rem; border-right:1px solid #ccc;">Event 1 <span style="color:#666;">(#{{ trial.akc_event_number }})</span></th>
+                <th colspan="2" style="padding:0.3rem;">Event 2 <span style="color:#666;">(#{{ trial.akc_event_number_2 }})</span></th>
+                <th></th>
+              </tr>
+            {% endif %}
             <tr style="border-bottom:2px solid #2c6e2e; text-align:left;">
               <th style="padding:0.4rem 0.5rem;">Event</th>
               <th style="padding:0.4rem 0.5rem;">Class</th>
-              {% if trial.akc_event_number_2 %}
-                <th style="padding:0.4rem 0.5rem;">Enter In</th>
+              <th style="padding:0.4rem 0.5rem;{% if has_e2 %} border-right:1px solid #ccc;{% endif %}">Day Pref.</th>
+              {% if has_e2 %}
+                <th style="padding:0.4rem 0.5rem;">Class</th>
+                <th style="padding:0.4rem 0.5rem;">Day Pref.</th>
               {% endif %}
-              <th style="padding:0.4rem 0.5rem;">Day Pref.</th>
               <th style="padding:0.4rem 0.5rem; text-align:right;">Fee</th>
             </tr>
           </thead>
@@ -241,73 +296,12 @@
                   data-avail-days="{{ te.available_days or '' }}"
                   style="border-bottom:1px solid #eee;">
                 <td style="padding:0.5rem;"><strong>{{ te.name }}</strong></td>
-
-                {# Class selection #}
-                <td style="padding:0.5rem;">
-                  {% if te.is_test_class %}
-                    <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer;">
-                      <input type="checkbox" name="enter_te_{{ te.id }}" value="1"
-                             class="te-enter-check"
-                             {% if form_data.get('enter_te_' ~ te.id|string) %}checked{% endif %}>
-                      Enter
-                    </label>
-                  {% else %}
-                    <select name="class_{{ te.id }}" class="class-select" style="max-width:160px;">
-                      <option value="">— no entry —</option>
-                      {% for cls in te_classes_map[te.id] %}
-                        <option value="{{ cls.id }}"
-                          {% if form_data.get('class_' ~ te.id|string) == cls.id|string %}selected{% endif %}>
-                          {{ cls.name }}
-                        </option>
-                      {% endfor %}
-                    </select>
-                  {% endif %}
-                </td>
-
-                {# AKC event checkboxes — Event 1 and/or Event 2 #}
-                {% if trial.akc_event_number_2 %}
-                  <td style="padding:0.5rem;">
-                    {% set pref_val = form_data.get('event_pref_' ~ te.id|string, 'event_1') %}
-                    <label style="display:block; white-space:nowrap; font-size:0.85rem;">
-                      <input type="checkbox" name="akc_ev1_{{ te.id }}" value="1"
-                             class="akc-ev-check"
-                             {% if form_data.get('akc_ev1_' ~ te.id|string) or (not form_data.get('akc_ev2_' ~ te.id|string) and pref_val in ('event_1', 'both', '')) %}checked{% endif %}>
-                      Event 1
-                    </label>
-                    <label style="display:block; white-space:nowrap; font-size:0.85rem;">
-                      <input type="checkbox" name="akc_ev2_{{ te.id }}" value="1"
-                             class="akc-ev-check"
-                             {% if form_data.get('akc_ev2_' ~ te.id|string) or pref_val == 'both' %}checked{% endif %}>
-                      Event 2
-                    </label>
-                  </td>
+                <td style="padding:0.5rem;">{{ class_cell(te, 'e1') }}</td>
+                <td style="padding:0.5rem;{% if has_e2 %} border-right:1px solid #ccc;{% endif %}">{{ day_pref_cell(te, 'e1') }}</td>
+                {% if has_e2 %}
+                  <td style="padding:0.5rem;">{{ class_cell(te, 'e2') }}</td>
+                  <td style="padding:0.5rem;">{{ day_pref_cell(te, 'e2') }}</td>
                 {% endif %}
-
-                {# Day preference — always visible where applicable #}
-                <td style="padding:0.5rem;">
-                  {% if te.available_days == 'either' %}
-                    {% set day_val = form_data.get('day_pref_' ~ te.id|string, '') %}
-                    <label style="display:block; white-space:nowrap; font-size:0.85rem;">
-                      <input type="radio" name="day_pref_{{ te.id }}" value=""
-                             {% if day_val == '' %}checked{% endif %}> No Pref
-                    </label>
-                    <label style="display:block; white-space:nowrap; font-size:0.85rem;">
-                      <input type="radio" name="day_pref_{{ te.id }}" value="friday"
-                             {% if day_val == 'friday' %}checked{% endif %}> Fri
-                    </label>
-                    <label style="display:block; white-space:nowrap; font-size:0.85rem;">
-                      <input type="radio" name="day_pref_{{ te.id }}" value="saturday"
-                             {% if day_val == 'saturday' %}checked{% endif %}> Sat
-                    </label>
-                  {% elif te.available_days == 'friday' %}
-                    <span style="color:#555; font-size:0.85rem;">Fri only</span>
-                  {% elif te.available_days == 'saturday' %}
-                    <span style="color:#555; font-size:0.85rem;">Sat only</span>
-                  {% else %}
-                    <span style="color:#aaa; font-size:0.85rem;">—</span>
-                  {% endif %}
-                </td>
-
                 <td style="padding:0.5rem; text-align:right; white-space:nowrap;">
                   ${{ "%.2f" | format(te.fee_cents / 100) }}
                 </td>
@@ -322,8 +316,8 @@
 
     <div style="margin-top:1rem; padding:0.75rem 1rem; background:#f0f8ff; border-left:4px solid #2980b9; border-radius:4px;">
       <strong>Total due: $<span id="total-display">0.00</span></strong>
-      {% if trial.akc_event_number_2 %}
-        <span style="font-size:0.85rem; color:#555;"> — checking both Event 1 and Event 2 doubles the fee for that class</span>
+      {% if has_e2 %}
+        <span style="font-size:0.85rem; color:#555;"> — entering the same event in both Event 1 and Event 2 charges the fee twice</span>
       {% endif %}
     </div>
   </fieldset>
@@ -359,7 +353,6 @@
     eventId: {{ event.id }},
     formId: 'entry-form',
     submitBtnId: 'submit-btn',
-    hasEventPref: {{ 'true' if trial.akc_event_number_2 else 'false' }},
   };
 </script>
 <script src="{{ url_for('static', path='js/trial_form.js') }}"></script>

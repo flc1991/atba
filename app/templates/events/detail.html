@@ -17,7 +17,7 @@
 </p>
 
 {% if event.description %}
-  <p>{{ event.description }}</p>
+  <p style="white-space:pre-line;">{{ event.description }}</p>
 {% endif %}
 
 {# ---- Trial weekend ---- #}
@@ -31,6 +31,13 @@
             — Event #{{ trial.akc_event_number }}{% if trial.akc_event_number_2 %} &amp; #{{ trial.akc_event_number_2 }}{% endif %}
           {% endif %}
         </h3>
+        {% if trial.governing_body == 'AHBA' and (trial.ahba_event_1_judge or trial.ahba_event_2_judge) %}
+          <p style="margin-top:-0.4rem; color:#555;">
+            {% if trial.ahba_event_1_judge %}<strong>Event 1 judge:</strong> {{ trial.ahba_event_1_judge }}{% endif %}
+            {% if trial.ahba_event_1_judge and trial.ahba_event_2_judge %}<br>{% endif %}
+            {% if trial.ahba_event_2_judge %}<strong>Event 2 judge:</strong> {{ trial.ahba_event_2_judge }}{% endif %}
+          </p>
+        {% endif %}
 
         {% set status = trial_statuses[trial.id] %}
         {% if status == 'closed' %}

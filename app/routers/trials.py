@@ -97,22 +97,71 @@ def _get_saved_dogs(user, db: Session) -> list:
     return db.query(Dog).filter_by(user_id=user.id).order_by(Dog.dog_name).all()
 
 
-def _compute_akc_fee(selections: dict, te_prefs: dict, trial_events: list[TrialEvent]) -> int:
-    """selections: {te_id: class_id_or_None}, te_prefs: {te_id: akc_trial_pref}"""
-    te_fee_map = {te.id: te.fee_cents for te in trial_events}
-    total = 0
-    for te_id in selections:
-        fee = te_fee_map.get(te_id, 0)
-        pref = te_prefs.get(te_id, "event_1")
-        multiplier = 2 if pref == "both" else 1
-        total += fee * multiplier
-    return total
+def _parse_selection_rows(
+    form,
+    trial_events: list[TrialEvent],
+    te_classes_map: dict[int, list[TrialEventClass]],
+    has_e2: bool,
+    day_choices: tuple[str, ...],
+) -> list[dict]:
+    """Parse per-side form data into a list of selection rows.
+
+    Each entered (event, side) becomes one dict: {te_id, class_id, pref, day_preference}.
+    `pref` is "event_1" or "event_2". For single-trial weekends (has_e2=False),
+    only side "e1" is parsed; pref is still "event_1" for the unique constraint.
+    `day_choices` restricts which day_pref values are accepted (e.g., ("friday",
+    "saturday") for AKC, ("saturday", "sunday") for AHBA).
+    """
+    rows: list[dict] = []
+    sides = [("e1", "event_1")]
+    if has_e2:
+        sides.append(("e2", "event_2"))
+
+    for te in trial_events:
+        te_id = te.id
+        valid_class_ids = {cls.id for cls in te_classes_map.get(te_id, [])}
+        for side, pref_value in sides:
+            class_id: int | None = None
+            entered = False
+            if te.is_test_class:
+                if form.get(f"enter_te_{side}_{te_id}"):
+                    entered = True
+            else:
+                raw_cls = (form.get(f"class_{side}_{te_id}") or "").strip()
+                if raw_cls:
+                    try:
+                        cid = int(raw_cls)
+                    except ValueError:
+                        continue
+                    if cid in valid_class_ids:
+                        class_id = cid
+                        entered = True
+            if not entered:
+                continue
+
+            # Day preference for this side
+            avail = te.available_days
+            if avail == "either" or avail is None:
+                day = (form.get(f"day_pref_{side}_{te_id}") or "").strip()
+                day_pref = day if day in day_choices else None
+            elif avail in day_choices:
+                day_pref = avail
+            else:
+                day_pref = None
+
+            rows.append({
+                "te_id": te_id,
+                "class_id": class_id,
+                "pref": pref_value,
+                "day_preference": day_pref,
+            })
+    return rows
 
 
-def _compute_ahba_fee(selections: dict, trial_events: list[TrialEvent]) -> int:
-    """selections: {te_id: class_id_or_None}"""
+def _compute_fee_from_rows(rows: list[dict], trial_events: list[TrialEvent]) -> int:
+    """Sum fee_cents across every selection row (one row = one entry = one fee)."""
     te_fee_map = {te.id: te.fee_cents for te in trial_events}
-    return sum(te_fee_map.get(te_id, 0) for te_id in selections)
+    return sum(te_fee_map.get(r["te_id"], 0) for r in rows)
 
 
 # ---------------------------------------------------------------------------
@@ -176,51 +225,16 @@ async def akc_entry_post(
         return RedirectResponse(f"/events/{event_id}", status_code=302)
 
     trial_events, te_classes_map = _load_trial_events(trial.id, db)
-    valid_te_ids = {te.id for te in trial_events}
+    current_user = ctx.get("current_user")
 
     # --- collect selections ---
-    selections: dict[int, int | None] = {}  # te_id → class_id (None for test classes)
-    te_prefs: dict[int, str] = {}           # te_id → "event_1" | "event_2" | "both"
-    day_prefs: dict[int, str | None] = {}   # te_id → "friday" | "saturday" | None
-
-    for te in trial_events:
-        te_id = te.id
-        if te.is_test_class:
-            # Checkbox: "enter_te_{id}" present = entered
-            if form.get(f"enter_te_{te_id}"):
-                selections[te_id] = None
-        else:
-            raw_cls = form.get(f"class_{te_id}", "")
-            if raw_cls:
-                try:
-                    class_id = int(raw_cls)
-                except ValueError:
-                    continue
-                valid_ids = {cls.id for cls in te_classes_map.get(te_id, [])}
-                if class_id in valid_ids:
-                    selections[te_id] = class_id
-
-        if te_id in selections:
-            # New checkbox-based input: akc_ev1_{id} and akc_ev2_{id}
-            ev1 = bool(form.get(f"akc_ev1_{te_id}"))
-            ev2 = bool(form.get(f"akc_ev2_{te_id}"))
-            if ev1 and ev2:
-                pref = "both"
-            elif ev2:
-                pref = "event_2"
-            else:
-                pref = "event_1"  # default: event 1
-            te_prefs[te_id] = pref
-
-            if te.available_days == "either":
-                day = form.get(f"day_pref_{te_id}", "")
-                day_prefs[te_id] = day if day in ("friday", "saturday") else None
-            elif te.available_days == "friday":
-                day_prefs[te_id] = "friday"
-            elif te.available_days == "saturday":
-                day_prefs[te_id] = "saturday"
-            else:
-                day_prefs[te_id] = None
+    # One row per (trial_event, side) that the registrant entered. Each row carries
+    # its own class and day preference so the two AKC trials can differ.
+    has_e2 = trial.akc_event_number_2 is not None
+    selection_rows = _parse_selection_rows(
+        form, trial_events, te_classes_map, has_e2,
+        day_choices=("friday", "saturday"),
+    )
 
     # --- collect fields ---
     def fget(name: str, default: str = "") -> str:
@@ -290,7 +304,7 @@ async def akc_entry_post(
         errors.append("Owner name is required.")
     if not signature:
         errors.append("Signature (typed name) is required.")
-    if not selections:
+    if not selection_rows:
         errors.append("Please select at least one class or test to enter.")
 
     if errors:
@@ -311,9 +325,8 @@ async def akc_entry_post(
             request, "trials/akc_entry_form.html", ctx, status_code=422
         )
 
-    total_fee_cents = _compute_akc_fee(selections, te_prefs, trial_events)
+    total_fee_cents = _compute_fee_from_rows(selection_rows, trial_events)
 
-    current_user = ctx.get("current_user")
     entry = TrialEntry(
         event_id=event_id,
         user_id=current_user.id if current_user else None,
@@ -351,13 +364,13 @@ async def akc_entry_post(
     db.add(entry)
     db.flush()
 
-    for te_id, class_id in selections.items():
+    for row in selection_rows:
         db.add(TrialEntrySelection(
             trial_entry_id=entry.id,
-            trial_event_id=te_id,
-            trial_event_class_id=class_id,
-            akc_trial_pref=te_prefs.get(te_id),
-            day_preference=day_prefs.get(te_id),
+            trial_event_id=row["te_id"],
+            trial_event_class_id=row["class_id"],
+            akc_trial_pref=row["pref"],
+            day_preference=row["day_preference"],
         ))
 
     db.commit()
@@ -453,24 +466,16 @@ async def ahba_entry_post(
 
     trial_events, te_classes_map = _load_trial_events(trial.id, db)
 
-    # --- collect selections ---
-    selections: dict[int, int | None] = {}  # te_id → class_id (None for JHD test classes)
+    current_user = ctx.get("current_user")
 
-    for te in trial_events:
-        te_id = te.id
-        if te.is_test_class:
-            if form.get(f"enter_te_{te_id}"):
-                selections[te_id] = None
-        else:
-            raw_cls = form.get(f"class_{te_id}", "")
-            if raw_cls:
-                try:
-                    class_id = int(raw_cls)
-                except ValueError:
-                    continue
-                valid_ids = {cls.id for cls in te_classes_map.get(te_id, [])}
-                if class_id in valid_ids:
-                    selections[te_id] = class_id
+    # --- collect selections ---
+    # One row per (trial_event, side) the registrant entered, each with its own
+    # class and day preference so the two AHBA judges can score different runs.
+    has_e2 = trial.ahba_event_2_judge is not None
+    selection_rows = _parse_selection_rows(
+        form, trial_events, te_classes_map, has_e2,
+        day_choices=("saturday", "sunday"),
+    )
 
     def fget(name: str, default: str = "") -> str:
         return form.get(name, default).strip()
@@ -517,7 +522,7 @@ async def ahba_entry_post(
         errors.append("Breed variety is required.")
     if not signature:
         errors.append("Signature (typed name) is required.")
-    if not selections:
+    if not selection_rows:
         errors.append("Please select at least one event to enter.")
 
     if errors:
@@ -538,9 +543,8 @@ async def ahba_entry_post(
             request, "trials/ahba_entry_form.html", ctx, status_code=422
         )
 
-    total_fee_cents = _compute_ahba_fee(selections, trial_events)
+    total_fee_cents = _compute_fee_from_rows(selection_rows, trial_events)
 
-    current_user = ctx.get("current_user")
     entry = TrialEntry(
         event_id=event_id,
         user_id=current_user.id if current_user else None,
@@ -573,11 +577,14 @@ async def ahba_entry_post(
     db.add(entry)
     db.flush()
 
-    for te_id, class_id in selections.items():
+    for row in selection_rows:
         db.add(TrialEntrySelection(
             trial_entry_id=entry.id,
-            trial_event_id=te_id,
-            trial_event_class_id=class_id,
+            trial_event_id=row["te_id"],
+            trial_event_class_id=row["class_id"],
+            # Reuses the akc_trial_pref column for AHBA two-trial weekends.
+            akc_trial_pref=row["pref"],
+            day_preference=row["day_preference"],
         ))
 
     db.commit()
