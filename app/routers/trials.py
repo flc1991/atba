@@ -12,6 +12,7 @@ from app.models.dog import Dog
 from app.models.event import Event
 from app.models.trial import Trial, TrialEntry, TrialEntrySelection, TrialEvent, TrialEventClass
 from app.utils.countries import get_country_choices
+from app.utils.account_linking import find_user_by_email
 from app.utils.flash import flash
 from app.utils.registration_windows import get_trial_status
 
@@ -327,9 +328,16 @@ async def akc_entry_post(
 
     total_fee_cents = _compute_fee_from_rows(selection_rows, trial_events)
 
+    # Link to a User account by handler email if there's no logged-in user.
+    linked_user_id = current_user.id if current_user else None
+    if linked_user_id is None and handler_email:
+        matched = find_user_by_email(handler_email, db)
+        if matched:
+            linked_user_id = matched.id
+
     entry = TrialEntry(
         event_id=event_id,
-        user_id=current_user.id if current_user else None,
+        user_id=linked_user_id,
         governing_body="AKC",
         handler_name=handler_name,
         handler_email=handler_email,
@@ -545,9 +553,15 @@ async def ahba_entry_post(
 
     total_fee_cents = _compute_fee_from_rows(selection_rows, trial_events)
 
+    linked_user_id = current_user.id if current_user else None
+    if linked_user_id is None and handler_email:
+        matched = find_user_by_email(handler_email, db)
+        if matched:
+            linked_user_id = matched.id
+
     entry = TrialEntry(
         event_id=event_id,
-        user_id=current_user.id if current_user else None,
+        user_id=linked_user_id,
         governing_body="AHBA",
         handler_name=handler_name,
         handler_email=handler_email,

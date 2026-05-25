@@ -7,6 +7,8 @@ from sqlalchemy import func as sa_func
 from sqlalchemy import or_ as sa_or_
 from sqlalchemy.orm import Session
 
+from app.utils.account_linking import find_user_by_email
+
 from app.config import settings
 from app.dependencies import base_context, get_db
 from app.models.event import Event
@@ -250,9 +252,15 @@ async def fun_run_post(
             request, "registrations/fun_run.html", ctx, status_code=422
         )
 
+    linked_user_id = current_user.id if current_user else None
+    if linked_user_id is None and email:
+        matched_user = find_user_by_email(email, db)
+        if matched_user:
+            linked_user_id = matched_user.id
+
     reg = Registration(
         event_id=event.id,
-        user_id=current_user.id if current_user else None,
+        user_id=linked_user_id,
         name=name,
         email=email,
         phone=phone or None,
@@ -450,9 +458,15 @@ def _process_registration(
             request, template, new_ctx, status_code=422,
         )
 
+    linked_user_id = current_user.id if current_user else None
+    if linked_user_id is None and email.strip():
+        matched_user = find_user_by_email(email.strip(), db)
+        if matched_user:
+            linked_user_id = matched_user.id
+
     reg = Registration(
         event_id=event.id,
-        user_id=current_user.id if current_user else None,
+        user_id=linked_user_id,
         name=name.strip(),
         email=email.strip(),
         phone=phone.strip() or None,

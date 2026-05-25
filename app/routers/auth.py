@@ -7,6 +7,7 @@ from app.dependencies import base_context, get_db, require_login
 from app.limiter import limiter
 from app.models.dog import Dog
 from app.models.user import User
+from app.utils.account_linking import link_orphan_records
 from app.utils.auth import hash_password, verify_password
 from app.utils.countries import get_country_choices
 from app.utils.flash import flash, get_flash_messages
@@ -38,8 +39,19 @@ def login_submit(
     ctx: dict = Depends(base_context),
 ):
     user = db.query(User).filter_by(email=email.strip().lower()).first()
-    if user and user.is_active and verify_password(password, user.password_hash):
+    # Unregistered placeholder accounts have no usable password and can't log in.
+    if (
+        user
+        and user.is_active
+        and not user.is_unregistered
+        and user.password_hash
+        and verify_password(password, user.password_hash)
+    ):
         request.session["user_id"] = user.id
+        # Opportunistically link any orphan entries/registrations that were
+        # submitted (e.g., as a guest) with this email.
+        link_orphan_records(user, db)
+        db.commit()
         flash(request, f"Welcome back, {user.name.split()[0]}!", "success")
         return RedirectResponse(next or "/", status_code=302)
 
@@ -96,12 +108,17 @@ def register_submit(
         "postal_code": postal_code, "country": country, "phone": phone,
     }
 
+    normalized_email = email.strip().lower()
+    existing = db.query(User).filter_by(email=normalized_email).first()
+
     errors = []
     if len(password) < 8:
         errors.append("Password must be at least 8 characters.")
     if password != password2:
         errors.append("Passwords do not match.")
-    if db.query(User).filter_by(email=email.strip().lower()).first():
+    # Only real (claimed) accounts block re-signup; an unregistered placeholder
+    # turns the signup into a CLAIM of that placeholder.
+    if existing and not existing.is_unregistered:
         errors.append("An account with that email already exists.")
 
     if errors:
@@ -111,8 +128,28 @@ def register_submit(
         ctx["flash_messages"] = get_flash_messages(request)
         return templates.TemplateResponse(request, "auth/register.html", ctx, status_code=422)
 
+    if existing and existing.is_unregistered:
+        # Claim flow: convert the placeholder into a real account, using the
+        # submitter's typed-in info (admin's pre-fill is not authoritative).
+        existing.password_hash = hash_password(password)
+        existing.name = name.strip()
+        existing.address_line1 = address_line1.strip()
+        existing.address_line2 = address_line2.strip() or None
+        existing.city = city.strip()
+        existing.state_province = state_province.strip() or None
+        existing.postal_code = postal_code.strip()
+        existing.country = country
+        existing.phone = phone.strip() or None
+        existing.is_unregistered = False
+        link_orphan_records(existing, db)
+        db.commit()
+        request.session["user_id"] = existing.id
+        request.session["_claim_user_id"] = existing.id
+        flash(request, "Account claimed — please verify the saved dogs below.", "info")
+        return RedirectResponse("/auth/claim-verify-dogs", status_code=302)
+
     user = User(
-        email=email.strip().lower(),
+        email=normalized_email,
         password_hash=hash_password(password),
         name=name.strip(),
         address_line1=address_line1.strip(),
@@ -124,10 +161,73 @@ def register_submit(
         phone=phone.strip() or None,
     )
     db.add(user)
+    db.flush()  # need user.id for linking
+    trial_count, reg_count = link_orphan_records(user, db)
     db.commit()
     request.session["user_id"] = user.id
     flash(request, "Account created! You are now logged in.", "success")
+    if trial_count or reg_count:
+        flash(
+            request,
+            f"Found {trial_count + reg_count} prior entries with this email — linked to your account.",
+            "info",
+        )
     return RedirectResponse("/", status_code=302)
+
+
+# ---------------------------------------------------------------------------
+# Claim-flow dog verification (after signup over an unregistered placeholder)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/claim-verify-dogs", response_class=HTMLResponse)
+def claim_verify_dogs_get(
+    request: Request,
+    ctx: dict = Depends(base_context),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_login),
+):
+    claim_id = request.session.get("_claim_user_id")
+    if claim_id != current_user.id:
+        return RedirectResponse("/auth/account", status_code=302)
+    dogs = db.query(Dog).filter_by(user_id=current_user.id).order_by(Dog.dog_name).all()
+    if not dogs:
+        # Nothing to verify — clear the flag and continue.
+        request.session.pop("_claim_user_id", None)
+        flash(request, "Welcome! Your account is set up.", "success")
+        return RedirectResponse("/auth/account", status_code=302)
+    ctx.update({"dogs": dogs, "csrf_token": _csrf(request)})
+    return templates.TemplateResponse(request, "auth/claim_verify_dogs.html", ctx)
+
+
+@router.post("/claim-verify-dogs", response_class=HTMLResponse)
+async def claim_verify_dogs_post(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_login),
+):
+    form = await request.form()
+    submitted_csrf = form.get("csrf_token", "")
+    if submitted_csrf != request.session.get("_csrf", ""):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
+
+    claim_id = request.session.get("_claim_user_id")
+    if claim_id != current_user.id:
+        return RedirectResponse("/auth/account", status_code=302)
+
+    dogs = db.query(Dog).filter_by(user_id=current_user.id).all()
+    kept = 0
+    removed = 0
+    for dog in dogs:
+        if form.get(f"keep_dog_{dog.id}"):
+            kept += 1
+        else:
+            db.delete(dog)
+            removed += 1
+    db.commit()
+    request.session.pop("_claim_user_id", None)
+    flash(request, f"Account claimed — kept {kept} dog(s), removed {removed}.", "success")
+    return RedirectResponse("/auth/account", status_code=302)
 
 
 # ---------------------------------------------------------------------------

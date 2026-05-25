@@ -1099,6 +1099,175 @@ async def toggle_admin(
     return RedirectResponse("/admin/users", status_code=303)
 
 
+# ----------------------------------------------------------------
+# Unregistered-user create/edit + per-user dog management
+# ----------------------------------------------------------------
+
+def _user_to_form(u: User) -> dict:
+    return {
+        "name": u.name or "",
+        "email": u.email or "",
+        "phone": u.phone or "",
+        "address_line1": u.address_line1 or "",
+        "address_line2": u.address_line2 or "",
+        "city": u.city or "",
+        "state_province": u.state_province or "",
+        "postal_code": u.postal_code or "",
+        "country": u.country or "US",
+    }
+
+
+def _apply_user_form(u: User, form) -> None:
+    u.name = (form.get("name") or "").strip()
+    u.email = (form.get("email") or "").strip().lower()
+    u.phone = (form.get("phone") or "").strip() or None
+    u.address_line1 = (form.get("address_line1") or "").strip()
+    u.address_line2 = (form.get("address_line2") or "").strip() or None
+    u.city = (form.get("city") or "").strip()
+    u.state_province = (form.get("state_province") or "").strip() or None
+    u.postal_code = (form.get("postal_code") or "").strip()
+    u.country = (form.get("country") or "US").strip() or "US"
+
+
+@router.get("/users/new", response_class=HTMLResponse)
+def user_new_get(
+    request: Request,
+    admin: User = Depends(require_admin),
+):
+    ctx = _admin_ctx(request, admin)
+    ctx.update({"user": None, "form_data": {}, "dogs": []})
+    return templates.TemplateResponse(request, "admin/user_form.html", ctx)
+
+
+@router.post("/users/new")
+async def user_new_post(
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    from app.utils.account_linking import link_orphan_records
+    form = await request.form()
+    _validate_csrf(form.get("csrf_token", ""), request)
+
+    email = (form.get("email") or "").strip().lower()
+    name = (form.get("name") or "").strip()
+    if not email or not name:
+        flash(request, "Name and email are required.", "error")
+        return RedirectResponse("/admin/users/new", status_code=303)
+    if db.query(User).filter_by(email=email).first():
+        flash(request, f"A user with email {email} already exists.", "error")
+        return RedirectResponse("/admin/users/new", status_code=303)
+
+    u = User(email=email, password_hash=None, is_unregistered=True, role="user")
+    _apply_user_form(u, form)
+    db.add(u)
+    db.flush()
+    # Auto-link any orphan entries/registrations matching this email.
+    link_orphan_records(u, db)
+    db.commit()
+    flash(request, f"Unregistered user '{u.name}' created.", "success")
+    return RedirectResponse(f"/admin/users/{u.id}/edit", status_code=303)
+
+
+@router.get("/users/{user_id}/edit", response_class=HTMLResponse)
+def user_edit_get(
+    user_id: int,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(404)
+    from app.models.dog import Dog
+    dogs = db.query(Dog).filter_by(user_id=user.id).order_by(Dog.dog_name).all()
+    ctx = _admin_ctx(request, admin)
+    ctx.update({"user": user, "form_data": _user_to_form(user), "dogs": dogs})
+    return templates.TemplateResponse(request, "admin/user_form.html", ctx)
+
+
+@router.post("/users/{user_id}/edit")
+async def user_edit_post(
+    user_id: int,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    form = await request.form()
+    _validate_csrf(form.get("csrf_token", ""), request)
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(404)
+    _apply_user_form(user, form)
+    db.commit()
+    flash(request, f"{user.name} updated.", "success")
+    return RedirectResponse(f"/admin/users/{user.id}/edit", status_code=303)
+
+
+@router.post("/users/{user_id}/dogs/add")
+async def user_dog_add(
+    user_id: int,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    from app.models.dog import Dog
+    form = await request.form()
+    _validate_csrf(form.get("csrf_token", ""), request)
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(404)
+    dog_name = (form.get("dog_name") or "").strip()
+    if not dog_name:
+        flash(request, "Dog's name is required.", "error")
+        return RedirectResponse(f"/admin/users/{user.id}/edit", status_code=303)
+
+    def _f(k):
+        return (form.get(k) or "").strip() or None
+
+    dob_raw = _f("dog_dob")
+    dog_dob = None
+    if dob_raw:
+        try:
+            dog_dob = date.fromisoformat(dob_raw)
+        except ValueError:
+            pass
+
+    db.add(Dog(
+        user_id=user.id,
+        dog_name=dog_name,
+        dog_call_name=_f("dog_call_name"),
+        dog_breed=_f("dog_breed"),
+        dog_sex=_f("dog_sex"),
+        dog_dob=dog_dob,
+        akc_number_type=_f("akc_number_type"),
+        akc_registration_number=_f("akc_registration_number"),
+        ahba_registration_number=_f("ahba_registration_number"),
+    ))
+    db.commit()
+    flash(request, f"Added dog '{dog_name}' for {user.name}.", "success")
+    return RedirectResponse(f"/admin/users/{user.id}/edit", status_code=303)
+
+
+@router.post("/users/{user_id}/dogs/{dog_id}/delete")
+async def user_dog_delete(
+    user_id: int,
+    dog_id: int,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    from app.models.dog import Dog
+    form = await request.form()
+    _validate_csrf(form.get("csrf_token", ""), request)
+    dog = db.query(Dog).filter_by(id=dog_id, user_id=user_id).first()
+    if dog:
+        db.delete(dog)
+        db.commit()
+        flash(request, f"Removed {dog.dog_name}.", "success")
+    return RedirectResponse(f"/admin/users/{user_id}/edit", status_code=303)
+
+
 # ============================================================
 # Email verification (Phase 11a) — stubs wired to email_helpers
 # ============================================================

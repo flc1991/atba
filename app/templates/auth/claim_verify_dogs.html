@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Verify saved dogs — ATBA Herding{% endblock %}
+
+{% block content %}
+<h1>Verify your dogs</h1>
+<p style="max-width:640px;">
+  An admin had created a profile for this email address before you registered.
+  We've found the following dog record(s) attached to it. Check each one that
+  belongs to you — anything you leave unchecked will be removed from your
+  account.
+</p>
+
+<form method="post" action="/auth/claim-verify-dogs" style="max-width:640px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  {% for dog in dogs %}
+    <div style="border:1px solid #ddd; border-radius:6px; padding:0.75rem 1rem; margin-bottom:0.75rem; background:#fafafa;">
+      <label style="display:flex; align-items:flex-start; gap:0.5rem; cursor:pointer;">
+        <input type="checkbox" name="keep_dog_{{ dog.id }}" value="1" style="margin-top:0.3rem;">
+        <span>
+          <strong>{{ dog.dog_name }}</strong>
+          {% if dog.dog_call_name and dog.dog_call_name != dog.dog_name %} &ldquo;{{ dog.dog_call_name }}&rdquo;{% endif %}
+          {% if dog.dog_breed %} &mdash; {{ dog.dog_breed }}{% endif %}
+          {% if dog.dog_sex %} ({{ 'Male' if dog.dog_sex == 'M' else 'Female' }}){% endif %}
+          {% if dog.dog_dob %}<br><span style="font-size:0.85em; color:#666;">DOB: {{ dog.dog_dob.strftime('%B %d, %Y') }}</span>{% endif %}
+          {% if dog.akc_registration_number %}<br><span style="font-size:0.85em; color:#666;">AKC: {{ dog.akc_number_type or '' }} {{ dog.akc_registration_number }}</span>{% endif %}
+          {% if dog.ahba_registration_number %}<br><span style="font-size:0.85em; color:#666;">AHBA: {{ dog.ahba_registration_number }}</span>{% endif %}
+          <br><span style="font-size:0.85em; color:#c0392b;">Yes, this is my dog</span>
+        </span>
+      </label>
+    </div>
+  {% endfor %}
+
+  <div style="margin-top:1rem;">
+    <button type="submit" class="btn btn-primary">Continue</button>
+  </div>
+</form>
+{% endblock %}

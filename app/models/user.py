@@ -9,9 +9,13 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Nullable so admin-created "unregistered" placeholder users can exist
+    # without a usable login until the person claims the account.
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="user")  # 'user' | 'admin'
     is_trial_secretary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # True for admin-created placeholders. Cannot log in until claimed by signup.
+    is_unregistered: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     address_line1: Mapped[str] = mapped_column(String(255), nullable=False, default="")

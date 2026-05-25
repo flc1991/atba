@@ -181,6 +181,33 @@ def seed(db: Session) -> None:
             country="US",
         ))
 
+    # --- sample unregistered user (admin-created placeholder) + a saved dog ---
+    if not db.query(User).filter_by(email="paper_signup@example.com").first():
+        placeholder = User(
+            email="paper_signup@example.com",
+            password_hash=None,
+            is_unregistered=True,
+            role="user",
+            name="Paper Signup",
+            address_line1="789 Roster Rd",
+            city="Springfield",
+            state_province="VA",
+            postal_code="22150",
+            country="US",
+            phone="555-0100",
+        )
+        db.add(placeholder)
+        db.flush()
+        # Import here to keep top of file tidy
+        from app.models.dog import Dog
+        db.add(Dog(
+            user_id=placeholder.id,
+            dog_name="Rex of Sample Farm",
+            dog_call_name="Rex",
+            dog_breed="Border Collie",
+            dog_sex="M",
+        ))
+
     # ------------------------------------------------------------------ Jan 2026 — membership meeting (past)
     if not db.query(Event).filter_by(title="2026 ATBA Membership Meeting").first():
         db.add(Event(
