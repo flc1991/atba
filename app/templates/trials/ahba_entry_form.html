@@ -1,12 +1,53 @@
 {% extends "base.html" %}
-{% block title %}AHBA Trial Entry — {{ event.title }}{% endblock %}
+{% set admin_mode = admin_mode | default(false) %}
+{% block title %}{% if admin_mode %}Manual AHBA Entry{% else %}AHBA Trial Entry{% endif %} — {{ event.title }}{% endblock %}
 
 {% block content %}
-<h1>AHBA Herding Trial Entry</h1>
+{% if admin_mode %}
+  <p><a href="/admin/events/{{ event.id }}/trial-entries">&larr; All entries for {{ event.title }}</a></p>
+  <h1>Manual AHBA Entry</h1>
+{% else %}
+  <h1>AHBA Herding Trial Entry</h1>
+{% endif %}
 <h2>{{ event.title }} &mdash; {{ event.end_date.strftime('%B %d, %Y') }}</h2>
 
-<form method="post" action="/events/{{ event.id }}/trial/enter/ahba" id="entry-form" style="max-width:680px;">
+{% set form_action = ("/admin/events/" ~ event.id ~ "/trial-entries/new-ahba") if admin_mode else ("/events/" ~ event.id ~ "/trial/enter/ahba") %}
+<form method="post" action="{{ form_action }}" id="entry-form" style="max-width:680px;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  {% if admin_mode %}
+    <fieldset>
+      <legend>Admin options</legend>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="user_id">Link to user account <span class="form-hint">(optional — fills fields below)</span></label>
+          <select id="user_id" name="user_id">
+            <option value="">— None —</option>
+            {% for u in users %}
+              <option value="{{ u.id }}"
+                data-name="{{ u.name or '' }}"
+                data-email="{{ u.email or '' }}"
+                data-phone="{{ u.phone or '' }}"
+                data-address-line1="{{ u.address_line1 or '' }}"
+                data-address-line2="{{ u.address_line2 or '' }}"
+                data-city="{{ u.city or '' }}"
+                data-state-province="{{ u.state_province or '' }}"
+                data-postal-code="{{ u.postal_code or '' }}"
+                data-country="{{ u.country or 'US' }}">
+                {{ u.name }} ({{ u.email }})
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label style="display:flex; align-items:center; gap:0.5rem; margin-top:1.5rem;">
+            <input type="checkbox" name="is_paid" value="1" {% if form_data.get('is_paid') %}checked{% endif %}>
+            Mark as paid
+          </label>
+        </div>
+      </div>
+    </fieldset>
+  {% endif %}
 
   {# ---- Event Selections ---- #}
   {% set has_e2 = trial.ahba_event_2_judge is not none %}
@@ -195,7 +236,7 @@
   <fieldset>
     <legend>Dog Information</legend>
 
-    {% if saved_dogs %}
+    {% if saved_dogs and not admin_mode %}
     <div class="form-group" style="margin-bottom:1rem; padding:0.75rem; background:#f0f8ff; border-left:4px solid #2980b9; border-radius:4px;">
       <label for="dog-selector" style="font-weight:600;">Load a saved dog:</label>
       <select id="dog-selector" style="margin-top:0.25rem;">
@@ -264,7 +305,7 @@
       </div>
     </div>
 
-    {% if current_user %}
+    {% if current_user and not admin_mode %}
     <div class="form-group" style="margin-top:0.5rem;">
       <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;">
         <input type="checkbox" name="save_dog" value="1">
@@ -280,16 +321,19 @@
 
     <div class="form-group">
       <label for="signature">
-        Signature (type your full name) <span class="required">*</span>
-        <span class="form-hint"> — Owner or authorized agent. I certify the above information is correct and I agree to abide by AHBA rules.</span>
+        Signature (type your full name) {% if not admin_mode %}<span class="required">*</span>{% else %}<span class="form-hint">(optional)</span>{% endif %}
+        <span class="form-hint">{% if admin_mode %} — On-paper / phone entries; admin records what was on the signed paper form.{% else %} — Owner or authorized agent. I certify the above information is correct and I agree to abide by AHBA rules.{% endif %}</span>
       </label>
       <input type="text" id="signature" name="signature"
              value="{{ form_data.signature or '' }}">
     </div>
 
     <button type="submit" id="submit-btn" class="btn btn-primary" style="margin-top:1rem; font-size:1.05em;">
-      Continue to PayPal
+      {% if admin_mode %}Save Entry{% else %}Continue to PayPal{% endif %}
     </button>
+    {% if admin_mode %}
+      <a href="/admin/events/{{ event.id }}/trial-entries" class="btn btn-secondary" style="margin-left:0.5rem;">Cancel</a>
+    {% endif %}
   </fieldset>
 </form>
 
@@ -309,6 +353,30 @@
 </script>
 <script src="{{ url_for('static', path='js/trial_form.js') }}"></script>
 <script>
+  // Admin: user link pre-fill (owner address/contact fields)
+  var userSelector = document.getElementById('user_id');
+  if (userSelector) {
+    userSelector.addEventListener('change', function() {
+      var opt = this.options[this.selectedIndex];
+      if (!opt || !opt.value) return;
+      var d = opt.dataset;
+      var setVal = function(id, val) {
+        var el = document.getElementById(id);
+        if (el && val) el.value = val;
+      };
+      setVal('handler_name', d.name);
+      setVal('handler_email', d.email);
+      setVal('handler_phone', d.phone);
+      setVal('address_line1', d.addressLine1);
+      setVal('address_line2', d.addressLine2);
+      setVal('city', d.city);
+      setVal('state_province', d.stateProvince);
+      setVal('postal_code', d.postalCode);
+      var countryEl = document.getElementById('country');
+      if (countryEl && d.country) countryEl.value = d.country;
+    });
+  }
+
   // Dog selector pre-fill
   var dogSelector = document.getElementById('dog-selector');
   if (dogSelector) {

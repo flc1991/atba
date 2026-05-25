@@ -2,28 +2,49 @@
 {% block title %}Members — Admin{% endblock %}
 
 {% block admin_content %}
-<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; gap:0.5rem; flex-wrap:wrap;">
   <h1 style="margin:0;">Members</h1>
-  <a href="/admin/members/new" class="btn btn-primary">+ Add Member</a>
+  <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+    <a href="/admin/members/bulk-add" class="btn btn-secondary">Bulk Add</a>
+    <a href="/admin/members/new" class="btn btn-primary">+ Add Member</a>
+  </div>
 </div>
+
+{% set status_styles = {
+  "member":  ("Member",  "#27ae60", "#eafaf1"),
+  "pending": ("Pending", "#b7791f", "#fff7e6"),
+  "expired": ("Expired", "#6c757d", "#f1f1f1"),
+} %}
 
 {% if members %}
   <table>
     <thead>
-      <tr><th>Name</th><th>Email</th><th>Year</th><th>Current</th><th>Linked user</th><th></th></tr>
+      <tr><th>Name</th><th>Email</th><th>Year</th><th>Status</th><th>Set to</th><th>Linked user</th><th></th></tr>
     </thead>
     <tbody>
       {% for m in members %}
+        {% set style = status_styles.get(m.status, ("Unknown", "#555", "#eee")) %}
         <tr>
           <td>{{ m.name }}</td>
           <td>{{ m.email or '—' }}</td>
           <td>{{ m.membership_year }}</td>
           <td>
-            {% if m.membership_year >= current_year %}
-              <span style="color:#27ae60;">✓</span>
-            {% else %}
-              <span style="color:#e74c3c;">Expired</span>
-            {% endif %}
+            <span style="display:inline-block; padding:0.15rem 0.55rem; border-radius:10px;
+                         color:{{ style[1] }}; background:{{ style[2] }};
+                         font-size:0.85em; font-weight:600;">
+              {{ style[0] }}
+            </span>
+          </td>
+          <td>
+            <form method="post" action="/admin/members/{{ m.id }}/set-status" style="display:inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <select name="status" onchange="this.form.submit()" style="font-size:0.85em;">
+                {% for s in ("member", "pending", "expired") %}
+                  <option value="{{ s }}" {% if s == m.status %}selected{% endif %}>{{ s | title }}</option>
+                {% endfor %}
+              </select>
+              <noscript><button type="submit" class="btn btn-sm">Set</button></noscript>
+            </form>
           </td>
           <td>{{ m.user_id or '—' }}</td>
           <td>

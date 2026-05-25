@@ -23,8 +23,17 @@ class Member(Base):
     postal_code: Mapped[str] = mapped_column(String(20), nullable=False, default="")
     country: Mapped[str] = mapped_column(String(2), nullable=False, default="US")
 
-    # Membership year; current if membership_year >= current calendar year
+    # Year the member paid for — informational only (the year on their check).
+    # The source of truth for member-vs-not is the `status` column below.
     membership_year: Mapped[int] = mapped_column(Integer, nullable=False)
 
+    # Membership status: "pending" (paid, not verified), "member" (active),
+    # or "expired" (was a member). Absence of a Member row = "no status".
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="member")
+
+    # Statuses that get the member pricing tier on registrations.
+    ACTIVE_STATUSES = ("pending", "member")
+    ALLOWED_STATUSES = ("pending", "member", "expired")
+
     def __repr__(self) -> str:
-        return f"<Member id={self.id} name={self.name!r} year={self.membership_year}>"
+        return f"<Member id={self.id} name={self.name!r} status={self.status!r}>"

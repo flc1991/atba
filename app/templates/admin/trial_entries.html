@@ -12,38 +12,13 @@
      onclick="return confirm('Send all unsent verification emails?')">Send All Verifications</a>
 </div>
 
-{# Manual entry form (collapsed) #}
-<details style="margin-bottom:1.5rem; border:1px solid #ddd; border-radius:4px; padding:1rem;">
-  <summary style="cursor:pointer; font-weight:bold;">+ Add Manual Entry</summary>
-  <form method="post" action="/admin/trial-entries/new" style="margin-top:1rem; max-width:480px;">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input type="hidden" name="event_id" value="{{ event.id }}">
-    <div class="form-row">
-      <div class="form-group">
-        <label>Handler name</label>
-        <input type="text" name="handler_name" required>
-      </div>
-      <div class="form-group">
-        <label>Email</label>
-        <input type="email" name="handler_email">
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>Dog name</label>
-        <input type="text" name="dog_name" required>
-      </div>
-      <div class="form-group">
-        <label>Total fee (cents)</label>
-        <input type="number" name="total_fee_cents" value="0" min="0">
-      </div>
-    </div>
-    <div class="form-group">
-      <label><input type="checkbox" name="is_paid" value="1"> Paid</label>
-    </div>
-    <button type="submit" class="btn btn-primary">Add Entry</button>
-  </form>
-</details>
+<div style="margin-bottom:1.5rem; padding:0.75rem 1rem; background:#f0f8ff; border-left:4px solid #2980b9; border-radius:4px;">
+  <strong>Add manual entry</strong> — use the full entry form (same fields as a public registration).
+  <div style="margin-top:0.5rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
+    <a href="/admin/events/{{ event.id }}/trial-entries/new-akc" class="btn btn-primary btn-sm">+ Add AKC Entry</a>
+    <a href="/admin/events/{{ event.id }}/trial-entries/new-ahba" class="btn btn-primary btn-sm">+ Add AHBA Entry</a>
+  </div>
+</div>
 
 {% if entries %}
   <table>

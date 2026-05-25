@@ -354,10 +354,12 @@ def entries_page(
     trial_entries = []
     for entry in trial_entries_raw:
         event = db.get(Event, entry.event_id)
+        # Outer join on TrialEventClass so test-class selections (NULL class_id)
+        # still appear; render "—" for class_name in that case.
         sels = (
             db.query(TrialEntrySelection, TrialEvent, TrialEventClass, Trial)
             .join(TrialEvent, TrialEntrySelection.trial_event_id == TrialEvent.id)
-            .join(TrialEventClass, TrialEntrySelection.trial_event_class_id == TrialEventClass.id)
+            .outerjoin(TrialEventClass, TrialEntrySelection.trial_event_class_id == TrialEventClass.id)
             .join(Trial, TrialEvent.trial_id == Trial.id)
             .filter(TrialEntrySelection.trial_entry_id == entry.id)
             .all()
@@ -365,7 +367,7 @@ def entries_page(
         sel_list = [
             {
                 "trial_event_name": te.name,
-                "class_name": tec.name,
+                "class_name": tec.name if tec else "—",
                 "governing_body": trial.governing_body,
                 "call_number": sel.call_number,
             }

@@ -16,8 +16,10 @@ from app.models.member import Member
 from app.models.registration import Registration
 from app.models.trial import Trial, TrialEntry, TrialEntrySelection, TrialEvent, TrialEventClass
 from app.models.user import User
+from app.utils.countries import get_country_choices
 from app.utils.flash import flash
 from app.utils.registration_windows import compute_ahba_close, compute_akc_close, get_trial_status
+from app.routers.trials import _parse_selection_rows, _compute_fee_from_rows
 
 router = APIRouter(tags=["admin"])
 templates = Jinja2Templates(directory="app/templates")
@@ -365,12 +367,18 @@ def trial_entries_list(
         details = []
         for sel in sels:
             te = db.get(TrialEvent, sel.trial_event_id)
-            cls = db.get(TrialEventClass, sel.trial_event_class_id)
+            if te is None:
+                continue  # orphaned selection — skip rather than 500
+            # Test classes (AKC tests, AHBA JHD) have NULL trial_event_class_id.
+            cls = (
+                db.get(TrialEventClass, sel.trial_event_class_id)
+                if sel.trial_event_class_id is not None else None
+            )
             trial = db.get(Trial, te.trial_id)
             details.append({
-                "governing_body": trial.governing_body,
+                "governing_body": trial.governing_body if trial else "",
                 "event_name": te.name,
-                "class_name": cls.name,
+                "class_name": cls.name if cls else "",
                 "call_number": sel.call_number,
                 "sel_id": sel.id,
             })
@@ -442,38 +450,187 @@ async def trial_entry_edit(
     return RedirectResponse(f"/admin/trial-entries/{entry_id}", status_code=303)
 
 
-@router.post("/trial-entries/new")
-async def trial_entry_manual(
+# ----------------------------------------------------------------
+# Manual trial entry — full AKC/AHBA forms in admin mode
+# ----------------------------------------------------------------
+
+def _manual_entry_ctx(request: Request, admin: User, db: Session, event_id: int, body: str):
+    """Build the context for rendering the public AKC/AHBA entry form in admin mode."""
+    event = _get_event(event_id, db)
+    trial = db.query(Trial).filter_by(event_id=event_id, governing_body=body).first()
+    if not trial:
+        raise HTTPException(status_code=404, detail=f"{body} trial not configured for this event")
+    trial_events = (
+        db.query(TrialEvent).filter_by(trial_id=trial.id).order_by(TrialEvent.sort_order).all()
+    )
+    te_classes_map = {
+        te.id: db.query(TrialEventClass).filter_by(trial_event_id=te.id)
+                  .order_by(TrialEventClass.sort_order).all()
+        for te in trial_events
+    }
+    users = db.query(User).filter_by(is_active=True).order_by(User.name).all()
+    ctx = _admin_ctx(request, admin)
+    ctx.update({
+        "admin_mode": True,
+        "event": event,
+        "trial": trial,
+        "trial_events": trial_events,
+        "te_classes_map": te_classes_map,
+        "users": users,
+        "saved_dogs": [],  # admin manual entry — no saved-dogs auto-fill
+        "form_data": {},
+        "countries": get_country_choices(),
+        "csrf_token": _csrf(request),
+    })
+    return ctx, event, trial, trial_events, te_classes_map
+
+
+def _save_manual_entry(
+    *, request: Request, db: Session, event, trial, trial_events,
+    te_classes_map, form, governing_body: str,
+    day_choices: tuple[str, ...],
+) -> TrialEntry:
+    """Shared save path for both manual AKC and AHBA entries."""
+    has_e2 = (
+        (governing_body == "AKC" and trial.akc_event_number_2 is not None)
+        or (governing_body == "AHBA" and trial.ahba_event_2_judge is not None)
+    )
+    selection_rows = _parse_selection_rows(
+        form, trial_events, te_classes_map, has_e2, day_choices=day_choices,
+    )
+
+    def fget(name: str, default: str = "") -> str:
+        return (form.get(name, default) or "").strip()
+
+    user_id_raw = fget("user_id")
+    user_id = int(user_id_raw) if user_id_raw else None
+
+    dob_raw = fget("dog_dob") or None
+    dog_dob = None
+    if dob_raw:
+        try:
+            dog_dob = date.fromisoformat(dob_raw)
+        except ValueError:
+            dog_dob = None
+
+    dog_call_name = fget("dog_call_name") or None
+    dog_name = fget("dog_name")
+    if not dog_call_name and dog_name:
+        dog_call_name = dog_name
+
+    entry = TrialEntry(
+        event_id=event.id,
+        user_id=user_id,
+        governing_body=governing_body,
+        handler_name=fget("handler_name") or "(unknown)",
+        handler_email=fget("handler_email") or "",
+        handler_phone=fget("handler_phone") or None,
+        address_line1=fget("address_line1"),
+        address_line2=fget("address_line2") or None,
+        city=fget("city"),
+        state_province=fget("state_province") or None,
+        postal_code=fget("postal_code"),
+        country=fget("country", "US") or "US",
+        dog_name=dog_name or "(unknown)",
+        dog_call_name=dog_call_name,
+        dog_breed=fget("dog_breed") or None,
+        dog_registration_number=fget("dog_registration_number") or None,
+        dog_sex=fget("dog_sex") or None,
+        dog_dob=dog_dob,
+        dog_sire=fget("dog_sire") or None,
+        dog_dam=fget("dog_dam") or None,
+        dog_breeder=fget("dog_breeder") or None,
+        dog_place_of_birth=fget("dog_place_of_birth") or None,
+        akc_number_type=fget("akc_number_type") or None,
+        akc_foreign_country=fget("akc_foreign_country") or None,
+        akc_handler_name=fget("akc_handler_name") or None,
+        akc_handler_address=fget("akc_handler_address") or None,
+        akc_separate_entries=bool(form.get("akc_separate_entries")),
+        ahba_agent_name=fget("ahba_agent_name") or None,
+        ahba_agent_phone=fget("ahba_agent_phone") or None,
+        ahba_agent_email=fget("ahba_agent_email") or None,
+        signature=fget("signature") or None,
+        total_fee_cents=_compute_fee_from_rows(selection_rows, trial_events),
+        is_paid=bool(form.get("is_paid")),
+        is_manual_entry=True,
+    )
+    db.add(entry)
+    db.flush()
+
+    for row in selection_rows:
+        db.add(TrialEntrySelection(
+            trial_entry_id=entry.id,
+            trial_event_id=row["te_id"],
+            trial_event_class_id=row["class_id"],
+            akc_trial_pref=row["pref"],
+            day_preference=row["day_preference"],
+        ))
+
+    db.commit()
+    db.refresh(entry)
+    return entry
+
+
+@router.get("/events/{event_id}/trial-entries/new-akc", response_class=HTMLResponse)
+def trial_entry_manual_akc_get(
+    event_id: int,
     request: Request,
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """Create a manual (paper/phone) trial entry."""
+    ctx, *_ = _manual_entry_ctx(request, admin, db, event_id, "AKC")
+    return templates.TemplateResponse(request, "trials/akc_entry_form.html", ctx)
+
+
+@router.post("/events/{event_id}/trial-entries/new-akc")
+async def trial_entry_manual_akc_post(
+    event_id: int,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
     form = await request.form()
     _validate_csrf(form.get("csrf_token", ""), request)
-    event_id = int(form.get("event_id", 0))
-    event = _get_event(event_id, db)
-
-    entry = TrialEntry(
-        event_id=event_id,
-        handler_name=form.get("handler_name", "").strip(),
-        handler_email=form.get("handler_email", "").strip(),
-        handler_phone=form.get("handler_phone", "").strip() or None,
-        address_line1=form.get("address_line1", "").strip(),
-        city=form.get("city", "").strip(),
-        postal_code=form.get("postal_code", "").strip(),
-        country=form.get("country", "US"),
-        dog_name=form.get("dog_name", "").strip(),
-        dog_breed=form.get("dog_breed", "").strip() or None,
-        dog_registration_number=form.get("dog_registration_number", "").strip() or None,
-        total_fee_cents=int(form.get("total_fee_cents", 0)),
-        is_paid=form.get("is_paid") == "1",
-        is_manual_entry=True,
+    _, event, trial, trial_events, te_classes_map = _manual_entry_ctx(request, admin, db, event_id, "AKC")
+    entry = _save_manual_entry(
+        request=request, db=db, event=event, trial=trial,
+        trial_events=trial_events, te_classes_map=te_classes_map,
+        form=form, governing_body="AKC",
+        day_choices=("friday", "saturday"),
     )
-    db.add(entry)
-    db.commit()
-    flash(request, f"Manual entry created for {entry.handler_name}.", "success")
-    return RedirectResponse(f"/admin/trial-entries/{entry.id}", status_code=303)
+    flash(request, f"Manual AKC entry created for {entry.handler_name} / {entry.dog_name}.", "success")
+    return RedirectResponse(f"/admin/events/{event_id}/trial-entries", status_code=303)
+
+
+@router.get("/events/{event_id}/trial-entries/new-ahba", response_class=HTMLResponse)
+def trial_entry_manual_ahba_get(
+    event_id: int,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    ctx, *_ = _manual_entry_ctx(request, admin, db, event_id, "AHBA")
+    return templates.TemplateResponse(request, "trials/ahba_entry_form.html", ctx)
+
+
+@router.post("/events/{event_id}/trial-entries/new-ahba")
+async def trial_entry_manual_ahba_post(
+    event_id: int,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    form = await request.form()
+    _validate_csrf(form.get("csrf_token", ""), request)
+    _, event, trial, trial_events, te_classes_map = _manual_entry_ctx(request, admin, db, event_id, "AHBA")
+    entry = _save_manual_entry(
+        request=request, db=db, event=event, trial=trial,
+        trial_events=trial_events, te_classes_map=te_classes_map,
+        form=form, governing_body="AHBA",
+        day_choices=("saturday", "sunday"),
+    )
+    flash(request, f"Manual AHBA entry created for {entry.handler_name} / {entry.dog_name}.", "success")
+    return RedirectResponse(f"/admin/events/{event_id}/trial-entries", status_code=303)
 
 
 # ============================================================
@@ -809,6 +966,83 @@ async def member_delete(
     return RedirectResponse("/admin/members", status_code=303)
 
 
+@router.post("/members/{member_id}/set-status")
+async def member_set_status(
+    member_id: int,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    form = await request.form()
+    _validate_csrf(form.get("csrf_token", ""), request)
+    new_status = (form.get("status") or "").strip()
+    if new_status not in Member.ALLOWED_STATUSES:
+        flash(request, f"Invalid status '{new_status}'.", "error")
+        return RedirectResponse("/admin/members", status_code=303)
+    member = _get_member(member_id, db)
+    member.status = new_status
+    db.commit()
+    flash(request, f"{member.name} → {new_status.title()}.", "success")
+    return RedirectResponse("/admin/members", status_code=303)
+
+
+@router.get("/members/bulk-add", response_class=HTMLResponse)
+def member_bulk_add_get(
+    request: Request,
+    admin: User = Depends(require_admin),
+):
+    ctx = _admin_ctx(request, admin)
+    ctx["current_year"] = date.today().year
+    return templates.TemplateResponse(request, "admin/members_bulk_add.html", ctx)
+
+
+@router.post("/members/bulk-add")
+async def member_bulk_add_post(
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    form = await request.form()
+    _validate_csrf(form.get("csrf_token", ""), request)
+    raw = form.get("members_text", "") or ""
+    status = (form.get("status") or "member").strip()
+    if status not in Member.ALLOWED_STATUSES:
+        status = "member"
+    current_year = date.today().year
+
+    created = 0
+    skipped: list[str] = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parsed = _parse_bulk_member_line(line, default_year=current_year)
+        if not parsed:
+            skipped.append(line)
+            continue
+        name, email, year = parsed
+        db.add(Member(
+            name=name,
+            email=email,
+            membership_year=year,
+            status=status,
+            address_line1="",
+            city="",
+            postal_code="",
+            country="US",
+        ))
+        created += 1
+    db.commit()
+
+    msg = f"Bulk add: {created} created"
+    if skipped:
+        msg += f", {len(skipped)} skipped: " + "; ".join(skipped[:5])
+        if len(skipped) > 5:
+            msg += f" (+{len(skipped) - 5} more)"
+    flash(request, msg, "success" if created else "error")
+    return RedirectResponse("/admin/members", status_code=303)
+
+
 # ============================================================
 # Users / Trial Secretary
 # ============================================================
@@ -1084,6 +1318,37 @@ def _apply_member_form(member: Member, form) -> None:
     member.city = form.get("city", "").strip()
     member.postal_code = form.get("postal_code", "").strip()
     member.country = form.get("country", "US")
+    status = form.get("status", "member").strip()
+    member.status = status if status in Member.ALLOWED_STATUSES else "member"
+
+
+def _parse_bulk_member_line(line: str, default_year: int) -> tuple[str, str, int] | None:
+    """Parse a single bulk-import line into (name, email, year), or None if unparseable.
+
+    Accepted formats (whitespace-tolerant):
+      "Jane Smith, jane@example.com"
+      "Jane Smith, jane@example.com, 2026"
+      "Jane Smith <jane@example.com>"
+    """
+    import re
+    s = line.strip()
+    if not s:
+        return None
+    # Mailto-style: "Name <email>"
+    m = re.match(r"^\s*(.+?)\s*<\s*([^<>\s]+@[^<>\s]+)\s*>\s*$", s)
+    if m:
+        return m.group(1).strip(), m.group(2).strip(), default_year
+    # Comma-separated: name, email [, year]
+    parts = [p.strip() for p in s.split(",")]
+    if len(parts) < 2:
+        return None
+    name, email = parts[0], parts[1]
+    if not name or "@" not in email:
+        return None
+    year = default_year
+    if len(parts) >= 3 and parts[2].isdigit():
+        year = int(parts[2])
+    return name, email, year
 
 
 def _member_to_form(member: Member) -> dict:
@@ -1096,4 +1361,5 @@ def _member_to_form(member: Member) -> dict:
         "city": member.city or "",
         "postal_code": member.postal_code or "",
         "country": member.country or "US",
+        "status": member.status,
     }

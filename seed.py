@@ -397,10 +397,10 @@ def seed(db: Session) -> None:
     _backfill_trial_fields(db)
 
     # ------------------------------------------------------------------ members
-    for name, year in [
-        ("Jane Handler", 2026),
-        ("Bob Herder", 2026),
-        ("Carol Tending", 2025),  # expired
+    for name, year, status in [
+        ("Jane Handler", 2026, "member"),
+        ("Bob Herder",   2026, "member"),
+        ("Carol Tending", 2025, "expired"),
     ]:
         if not db.query(Member).filter_by(name=name).first():
             db.add(Member(
@@ -412,6 +412,7 @@ def seed(db: Session) -> None:
                 postal_code="22150",
                 country="US",
                 membership_year=year,
+                status=status,
             ))
 
     db.commit()

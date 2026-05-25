@@ -3,6 +3,8 @@ from datetime import date
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import func as sa_func
+from sqlalchemy import or_ as sa_or_
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -32,18 +34,40 @@ def _get_open_event(event_id: int, expected_type: str, db: Session) -> Event:
 
 
 def _is_current_member(user, is_member_claim: bool, db: Session) -> bool:
-    """Return True if the user is verified as a current member."""
-    current_year = date.today().year
+    """Return True if the user qualifies for the member pricing tier."""
     if user:
-        # Check if the logged-in user has a member record for this year
         member = (
             db.query(Member)
-            .filter(Member.user_id == user.id, Member.membership_year >= current_year)
+            .filter(
+                Member.user_id == user.id,
+                Member.status.in_(Member.ACTIVE_STATUSES),
+            )
             .first()
         )
         return member is not None
-    # Guest claiming membership — grant pre_member rate; admin verifies later
+    # Guest path — caller is responsible for verifying the claim against the
+    # membership list before reaching this point (see _find_active_member).
     return is_member_claim
+
+
+def _find_active_member(name: str, email: str, db: Session) -> Member | None:
+    """Return a Member with active status whose name OR email matches the
+    given inputs (case-insensitive, trimmed). Used to verify guest self-claims."""
+    name_norm = (name or "").strip().lower()
+    email_norm = (email or "").strip().lower()
+    if not name_norm and not email_norm:
+        return None
+    return (
+        db.query(Member)
+        .filter(
+            Member.status.in_(Member.ACTIVE_STATUSES),
+            sa_or_(
+                sa_func.lower(sa_func.trim(Member.name)) == name_norm,
+                sa_func.lower(sa_func.trim(Member.email)) == email_norm,
+            ),
+        )
+        .first()
+    )
 
 
 def _csrf(request: Request) -> str:
@@ -170,6 +194,13 @@ async def fun_run_post(
             "event_4_judged": bool(form.get(f"dog_{i}_event_4_judged")),
         })
 
+    # Verify guest self-claim against the membership list. Logged-in users skip
+    # this — their status is sourced from the Member row linked to their User.
+    member_claim_unverified = False
+    if current_user is None and is_member_claim:
+        if _find_active_member(name, email, db) is None:
+            member_claim_unverified = True
+
     # Server-side pricing re-evaluation
     is_member = _is_current_member(current_user, is_member_claim, db)
     tier = resolve_pricing_tier(event.pre_entry_close_dt, is_member)
@@ -194,6 +225,12 @@ async def fun_run_post(
         errors.append("At least one dog's name is required.")
     if total_events == 0:
         errors.append("Please select at least one event for at least one dog.")
+    if member_claim_unverified:
+        errors.append(
+            f"We couldn't find '{name}' on the membership list. "
+            f"If you believe this is an error, please contact the event secretary at "
+            f"info@atba-herding.org, or uncheck the membership box to register at the general rate."
+        )
 
     if errors:
         for msg in errors:
@@ -359,6 +396,12 @@ def _process_registration(
     redirect to the PayPal checkout page."""
     current_user = ctx.get("current_user")
 
+    # Verify guest self-claim against the membership list (skip for logged-in users).
+    member_claim_unverified = False
+    if current_user is None and is_member_claim:
+        if _find_active_member(name, email, db) is None:
+            member_claim_unverified = True
+
     # Server-side pricing re-evaluation — never trust client-supplied amount
     is_member = _is_current_member(current_user, is_member_claim, db)
     tier = resolve_pricing_tier(event.pre_entry_close_dt, is_member)
@@ -378,8 +421,15 @@ def _process_registration(
         errors.append("Email address is required.")
     if not dog_name.strip():
         errors.append("Dog's name is required.")
+    if member_claim_unverified:
+        errors.append(
+            f"We couldn't find '{name.strip()}' on the membership list. "
+            f"If you believe this is an error, please contact the event secretary at "
+            f"info@atba-herding.org, or uncheck the membership box to register at the general rate."
+        )
 
     if errors:
+        from app.utils.flash import get_flash_messages
         for msg in errors:
             flash(request, msg, "error")
         form_data = {
@@ -394,11 +444,10 @@ def _process_registration(
             if event.event_type == "fun_run"
             else "registrations/smart_dog_day.html"
         )
+        new_ctx = _reg_context(request, event, ctx, db, form_data=form_data)
+        new_ctx["flash_messages"] = get_flash_messages(request)
         return templates.TemplateResponse(
-            request,
-            template,
-            _reg_context(request, event, ctx, db, form_data=form_data),
-            status_code=422,
+            request, template, new_ctx, status_code=422,
         )
 
     reg = Registration(

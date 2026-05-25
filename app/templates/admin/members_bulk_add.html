@@ -1,0 +1,50 @@
+{% extends "admin/base.html" %}
+{% block title %}Bulk Add Members — Admin{% endblock %}
+
+{% block admin_content %}
+<h1>Bulk Add Members</h1>
+<p><a href="/admin/members">&larr; Members</a></p>
+
+<p style="color:#555;">
+  Paste one member per line. Lines that can't be parsed are skipped and reported back.
+  All imported members get the status you select below.
+</p>
+
+<form method="post" action="/admin/members/bulk-add" style="max-width:680px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  <div class="form-group">
+    <label for="members_text">Members (one per line)</label>
+    <textarea id="members_text" name="members_text" rows="12" required
+              style="width:100%; font-family:monospace; font-size:0.95em;"
+              placeholder="Jane Smith, jane@example.com
+Bob Jones, bob@example.com, {{ current_year }}
+Carol Lee &lt;carol@example.com&gt;"></textarea>
+  </div>
+
+  <details style="margin-bottom:1rem; font-size:0.9em; color:#555;">
+    <summary style="cursor:pointer;">Accepted formats</summary>
+    <ul style="margin-top:0.5rem;">
+      <li><code>Name, email@example.com</code> — year defaults to {{ current_year }}</li>
+      <li><code>Name, email@example.com, 2026</code> — explicit year</li>
+      <li><code>Name &lt;email@example.com&gt;</code> — mailto-style, year defaults</li>
+    </ul>
+  </details>
+
+  <div class="form-row">
+    <div class="form-group">
+      <label for="status">Status for all imported members</label>
+      <select id="status" name="status">
+        <option value="member" selected>Member</option>
+        <option value="pending">Pending</option>
+        <option value="expired">Expired</option>
+      </select>
+    </div>
+  </div>
+
+  <div style="margin-top:1rem;">
+    <button type="submit" class="btn btn-primary">Import</button>
+    <a href="/admin/members" class="btn btn-secondary" style="margin-left:0.5rem;">Cancel</a>
+  </div>
+</form>
+{% endblock %}

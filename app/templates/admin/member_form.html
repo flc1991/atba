@@ -10,6 +10,27 @@
       style="max-width:480px;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
+  <div class="form-group" style="background:#f0f8ff; padding:0.75rem; border-left:4px solid #2980b9; border-radius:4px;">
+    <label for="user_id" style="font-weight:600;">Linked account
+      <span class="form-hint">(optional — selecting one will pre-fill the fields below)</span>
+    </label>
+    <select id="user_id" name="user_id" style="margin-top:0.25rem;">
+      <option value="">— None —</option>
+      {% for u in users %}
+        <option value="{{ u.id }}"
+          data-name="{{ u.name or '' }}"
+          data-email="{{ u.email or '' }}"
+          data-address-line1="{{ u.address_line1 or '' }}"
+          data-city="{{ u.city or '' }}"
+          data-postal-code="{{ u.postal_code or '' }}"
+          data-country="{{ u.country or 'US' }}"
+          {% if form_data.user_id|string == u.id|string %}selected{% endif %}>
+          {{ u.name }} ({{ u.email }})
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
   <div class="form-group">
     <label for="name">Full name</label>
     <input type="text" id="name" name="name" required value="{{ form_data.name or '' }}">
@@ -25,14 +46,11 @@
              value="{{ form_data.membership_year or current_year }}" min="2000" max="2099">
     </div>
     <div class="form-group">
-      <label for="user_id">Linked account <span class="form-hint">(optional)</span></label>
-      <select id="user_id" name="user_id">
-        <option value="">— None —</option>
-        {% for u in users %}
-          <option value="{{ u.id }}"
-            {% if form_data.user_id|string == u.id|string %}selected{% endif %}>
-            {{ u.name }} ({{ u.email }})
-          </option>
+      <label for="status">Status</label>
+      <select id="status" name="status">
+        {% set current_status = form_data.status or "member" %}
+        {% for s in ("member", "pending", "expired") %}
+          <option value="{{ s }}" {% if s == current_status %}selected{% endif %}>{{ s | title }}</option>
         {% endfor %}
       </select>
     </div>
@@ -61,4 +79,31 @@
     <a href="/admin/members" class="btn btn-secondary" style="margin-left:0.5rem;">Cancel</a>
   </div>
 </form>
+
+<script>
+  // When the admin picks an existing User, auto-fill the matching member fields.
+  // Empty user fields are NOT overwritten — admins may want to keep what's there.
+  (function () {
+    var userSel = document.getElementById('user_id');
+    if (!userSel) return;
+    var mapping = {
+      'name': 'name',
+      'email': 'email',
+      'address_line1': 'addressLine1',
+      'city': 'city',
+      'postal_code': 'postalCode',
+      'country': 'country',
+    };
+    userSel.addEventListener('change', function () {
+      var opt = this.options[this.selectedIndex];
+      if (!opt || !opt.value) return;
+      Object.keys(mapping).forEach(function (fieldId) {
+        var dataKey = mapping[fieldId];
+        var val = opt.dataset[dataKey];
+        var el = document.getElementById(fieldId);
+        if (el && val) el.value = val;
+      });
+    });
+  })();
+</script>
 {% endblock %}

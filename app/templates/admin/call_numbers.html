@@ -25,7 +25,7 @@
               <tr>
                 <td>{{ row.entry.handler_name }}</td>
                 <td>{{ row.entry.dog_name }}</td>
-                <td>{{ row.cls.name }}</td>
+                <td>{{ row.cls.name if row.cls else '—' }}</td>
                 <td>
                   <input type="number" name="cn_{{ row.sel.id }}" min="1" style="width:80px;"
                          value="{{ row.sel.call_number or '' }}">
