@@ -497,26 +497,61 @@ def trial_entry_detail(
 ):
     entry = _get_entry(entry_id, db)
     event = _get_event(entry.event_id, db)
-    trials = db.query(Trial).filter_by(event_id=event.id).order_by(Trial.governing_body).all()
-    trial_events_map = {}
-    te_classes_map = {}
-    for trial in trials:
-        tes = db.query(TrialEvent).filter_by(trial_id=trial.id).order_by(TrialEvent.sort_order).all()
-        trial_events_map[trial.id] = tes
-        for te in tes:
-            te_classes_map[te.id] = db.query(TrialEventClass).filter_by(trial_event_id=te.id).order_by(TrialEventClass.sort_order).all()
+    trial = db.query(Trial).filter_by(
+        event_id=event.id, governing_body=entry.governing_body
+    ).first()
 
-    sels = db.query(TrialEntrySelection).filter_by(trial_entry_id=entry_id).all()
-    current_sels = {sel.trial_event_id: sel for sel in sels}
+    # Build editable selection rows (matching the trial_entries list page shape).
+    selection_rows: list[dict] = []
+    sels = db.query(TrialEntrySelection).filter_by(trial_entry_id=entry.id).all()
+    for sel in sels:
+        te = db.get(TrialEvent, sel.trial_event_id)
+        if te is None:
+            continue
+        cls = (
+            db.get(TrialEventClass, sel.trial_event_class_id)
+            if sel.trial_event_class_id is not None else None
+        )
+        classes = (
+            db.query(TrialEventClass)
+            .filter_by(trial_event_id=te.id)
+            .order_by(TrialEventClass.sort_order)
+            .all()
+        )
+        trial_label = ""
+        if sel.akc_trial_pref == "event_1":
+            if trial and trial.governing_body == "AKC" and trial.akc_event_number:
+                trial_label = f"Event 1 (#{trial.akc_event_number})"
+            elif trial and trial.governing_body == "AHBA" and trial.ahba_event_1_judge:
+                trial_label = f"Event 1 ({trial.ahba_event_1_judge})"
+            else:
+                trial_label = "Event 1"
+        elif sel.akc_trial_pref == "event_2":
+            if trial and trial.governing_body == "AKC" and trial.akc_event_number_2:
+                trial_label = f"Event 2 (#{trial.akc_event_number_2})"
+            elif trial and trial.governing_body == "AHBA" and trial.ahba_event_2_judge:
+                trial_label = f"Event 2 ({trial.ahba_event_2_judge})"
+            else:
+                trial_label = "Event 2"
+        selection_rows.append({
+            "sel_id": sel.id,
+            "te_name": te.name,
+            "is_test_class": te.is_test_class,
+            "class_id": sel.trial_event_class_id,
+            "class_name": cls.name if cls else "",
+            "class_choices": [(c.id, c.name) for c in classes],
+            "akc_trial_pref": sel.akc_trial_pref or "event_1",
+            "trial_label": trial_label,
+            "day_preference": sel.day_preference or "",
+            "call_number": sel.call_number,
+        })
 
     ctx = _admin_ctx(request, admin)
     ctx.update({
         "event": event,
         "entry": entry,
-        "trials": trials,
-        "trial_events_map": trial_events_map,
-        "te_classes_map": te_classes_map,
-        "current_sels": current_sels,
+        "trial": trial,
+        "selection_rows": selection_rows,
     })
     return templates.TemplateResponse(request, "admin/trial_entry_form.html", ctx)
 
@@ -541,6 +576,22 @@ async def trial_entry_edit(
     db.commit()
     flash(request, "Entry updated.", "success")
     return RedirectResponse(f"/admin/trial-entries/{entry_id}", status_code=303)
+
+
+@router.post("/trial-entries/{entry_id}/toggle-paid")
+async def trial_entry_toggle_paid(
+    entry_id: int,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    form = await request.form()
+    _validate_csrf(form.get("csrf_token", ""), request)
+    entry = _get_entry(entry_id, db)
+    entry.is_paid = not entry.is_paid
+    db.commit()
+    flash(request, f"{entry.handler_name} / {entry.dog_name} — marked {'paid' if entry.is_paid else 'unpaid'}.", "success")
+    return RedirectResponse(f"/admin/events/{entry.event_id}/trial-entries", status_code=303)
 
 
 @router.post("/trial-entries/{entry_id}/delete")

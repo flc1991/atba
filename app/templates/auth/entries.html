@@ -10,12 +10,14 @@
 </p>
 
 {% macro paid_badge(rec, kind) -%}
-  {% if rec.is_paid %}
-    <span style="color:green;">&#10003; Paid</span>
-  {% else %}
-    <span style="color:#c0392b;">Pending payment</span>
-    <br><a href="/payments/checkout/{{ kind }}/{{ rec.id }}" class="btn btn-primary btn-sm" style="margin-top:0.25rem;">Pay Now</a>
-  {% endif %}
+  <div style="display:flex; flex-direction:column; gap:0.35rem; align-items:flex-start; min-height:60px;">
+    {% if rec.is_paid %}
+      <span style="display:inline-block; padding:0.2rem 0.6rem; border-radius:10px; background:#eafaf1; color:#27ae60; font-size:0.85em; font-weight:600; white-space:nowrap;">&#10003; Paid</span>
+    {% else %}
+      <span style="display:inline-block; padding:0.2rem 0.6rem; border-radius:10px; background:#fcecec; color:#c0392b; font-size:0.85em; font-weight:600; white-space:nowrap;">Pending payment</span>
+      <a href="/payments/checkout/{{ kind }}/{{ rec.id }}" class="btn btn-primary btn-sm">Pay Now</a>
+    {% endif %}
+  </div>
 {%- endmacro %}
 
 {% macro trial_entry_row(entry, event, selections) -%}

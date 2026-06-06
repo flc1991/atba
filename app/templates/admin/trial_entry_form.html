@@ -2,7 +2,7 @@
 {% block title %}Entry #{{ entry.id }} — Admin{% endblock %}
 
 {% block admin_content %}
-<h1>Trial Entry #{{ entry.id }}</h1>
+<h1>{{ entry.governing_body }} Trial Entry #{{ entry.id }}</h1>
 <p>
   <a href="/admin/events/{{ event.id }}/trial-entries">&larr; All entries for {{ event.title }}</a>
 </p>
@@ -50,7 +50,8 @@
     <table>
       <tr><td style="color:#666;">PayPal Order</td><td>{{ entry.paypal_order_id or '—' }}</td></tr>
       <tr><td style="color:#666;">Total Fee</td><td>${{ "%.2f" | format(entry.total_fee_cents / 100) }}</td></tr>
-      <tr><td style="color:#666;">Manual Entry</td><td>{{ '✓' if entry.is_manual_entry else '—' }}</td></tr>
+      <tr><td style="color:#666;">Source</td>
+          <td>{% if entry.is_manual_entry %}Manual (admin){% else %}Online{% endif %}</td></tr>
       <tr><td style="color:#666;">Verification Sent</td><td>{{ '✓' if entry.verification_sent else '—' }}</td></tr>
     </table>
 
@@ -62,32 +63,7 @@
       {{ entry.country }}
     </p>
 
-    <h3>Class Selections</h3>
-    {% for trial in trials %}
-      <strong>{{ trial.governing_body }}</strong>
-      <ul style="margin:0.25rem 0 0.75rem 1.5rem;">
-        {% for te in trial_events_map[trial.id] %}
-          {% set sel = current_sels.get(te.id) %}
-          <li>
-            {{ te.name }}:
-            {% if sel %}
-              {% set cls = none %}
-              {% for c in te_classes_map[te.id] %}
-                {% if c.id == sel.trial_event_class_id %}
-                  <strong>{{ c.name }}</strong>
-                  {% if sel.call_number %} (Call #{{ sel.call_number }}){% endif %}
-                {% endif %}
-              {% endfor %}
-            {% else %}
-              <em style="color:#888;">No entry</em>
-            {% endif %}
-          </li>
-        {% endfor %}
-      </ul>
-    {% endfor %}
-
-    <form method="post" action="/admin/trial-entries/{{ entry.id }}/send-verification"
-          style="margin-top:1rem;">
+    <form method="post" action="/admin/trial-entries/{{ entry.id }}/send-verification" style="margin-top:1rem;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <button type="submit" class="btn btn-secondary">
         {% if entry.verification_sent %}Resend Verification Email{% else %}Send Verification Email{% endif %}
@@ -95,4 +71,83 @@
     </form>
   </div>
 </div>
+
+<h2 style="margin-top:2rem;">Class Selections</h2>
+{% if selection_rows %}
+  <p style="color:#555; max-width:680px;">
+    Edit a row to change its class level, which trial it's entered in (Event 1 / Event 2),
+    or its day preference. Click <strong>Remove</strong> to drop a single selection;
+    that won't delete the rest of the entry.
+  </p>
+  <table style="width:100%; font-size:0.9em;">
+    <thead>
+      <tr style="text-align:left; border-bottom:2px solid #2c6e2e;">
+        <th style="padding:0.4rem 0.5rem;">Event</th>
+        <th style="padding:0.4rem 0.5rem;">Class</th>
+        <th style="padding:0.4rem 0.5rem;">Trial</th>
+        <th style="padding:0.4rem 0.5rem;">Day</th>
+        <th style="padding:0.4rem 0.5rem;">Call #</th>
+        <th style="padding:0.4rem 0.5rem;"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for sel in selection_rows %}
+        <tr style="border-bottom:1px solid #eee;">
+          <td style="padding:0.4rem 0.5rem;"><strong>{{ sel.te_name }}</strong></td>
+          <td colspan="3" style="padding:0.4rem 0.5rem;">
+            <form method="post" action="/admin/trial-entry-selections/{{ sel.sel_id }}/update"
+                  style="display:flex; gap:0.4rem; align-items:center; margin:0; flex-wrap:wrap;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              {% if sel.is_test_class %}
+                <em style="color:#888;">test class — no level</em>
+              {% else %}
+                <label style="font-size:0.85em;">Class:
+                  <select name="trial_event_class_id" style="font-size:0.9em;">
+                    {% for cid, cname in sel.class_choices %}
+                      <option value="{{ cid }}" {% if cid == sel.class_id %}selected{% endif %}>{{ cname }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+              {% endif %}
+              <label style="font-size:0.85em;">Trial:
+                <select name="akc_trial_pref" style="font-size:0.9em;">
+                  <option value="event_1" {% if sel.akc_trial_pref == 'event_1' %}selected{% endif %}>Event 1</option>
+                  <option value="event_2" {% if sel.akc_trial_pref == 'event_2' %}selected{% endif %}>Event 2</option>
+                </select>
+              </label>
+              <label style="font-size:0.85em;">Day:
+                <select name="day_preference" style="font-size:0.9em;">
+                  <option value="" {% if not sel.day_preference %}selected{% endif %}>— No pref —</option>
+                  <option value="friday" {% if sel.day_preference == 'friday' %}selected{% endif %}>Fri</option>
+                  <option value="saturday" {% if sel.day_preference == 'saturday' %}selected{% endif %}>Sat</option>
+                  <option value="sunday" {% if sel.day_preference == 'sunday' %}selected{% endif %}>Sun</option>
+                </select>
+              </label>
+              <button type="submit" class="btn btn-secondary btn-sm">Save row</button>
+            </form>
+            {% if sel.trial_label %}<div style="font-size:0.8em; color:#666; margin-top:0.2rem;">{{ sel.trial_label }}</div>{% endif %}
+          </td>
+          <td style="padding:0.4rem 0.5rem;">{{ sel.call_number or '—' }}</td>
+          <td style="padding:0.4rem 0.5rem;">
+            <form method="post" action="/admin/trial-entry-selections/{{ sel.sel_id }}/delete"
+                  style="display:inline;"
+                  onsubmit="return confirm('Remove {{ sel.te_name }} from this entry?')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <p style="color:#999;"><em>No selections on this entry.</em></p>
+{% endif %}
+
+<h2 style="margin-top:2rem; color:#c0392b;">Danger zone</h2>
+<form method="post" action="/admin/trial-entries/{{ entry.id }}/delete" style="margin-top:0.5rem;"
+      onsubmit="return confirm('Delete this entire entry for {{ entry.dog_name }}? This cannot be undone.')">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <button type="submit" class="btn btn-danger">Delete entire entry</button>
+</form>
 {% endblock %}

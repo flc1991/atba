@@ -29,11 +29,18 @@
           {% if entry.is_paid %}<span style="color:#27ae60;">&#10003; Paid</span>{% else %}<span style="color:#c0392b;">Unpaid</span>{% endif %}
           ·
           {% if entry.verification_sent %}<span style="color:#27ae60;">&#10003; Verified</span>{% else %}<span style="color:#999;">Not verified</span>{% endif %}
-          {% if entry.is_manual_entry %}· <span style="color:#7a6500;">Manual</span>{% endif %}
+          ·
+          {% if entry.is_manual_entry %}<span style="color:#7a6500;">Source: Manual (admin)</span>{% else %}<span style="color:#555;">Source: Online</span>{% endif %}
         </span>
       </div>
       <div style="display:flex; gap:0.35rem; flex-wrap:wrap;">
         <a href="/admin/trial-entries/{{ entry.id }}" class="btn btn-secondary btn-sm">Edit</a>
+        <form method="post" action="/admin/trial-entries/{{ entry.id }}/toggle-paid" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="btn btn-secondary btn-sm">
+            Mark {{ 'unpaid' if entry.is_paid else 'paid' }}
+          </button>
+        </form>
         <form method="post" action="/admin/trial-entries/{{ entry.id }}/send-verification" style="display:inline;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <button type="submit" class="btn btn-secondary btn-sm" {% if entry.verification_sent %}title="Already sent"{% endif %}>
@@ -57,7 +64,6 @@
             <th>Trial</th>
             <th>Day</th>
             <th>Call #</th>
-            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -65,40 +71,12 @@
             <tr style="border-bottom:1px solid #eee;">
               <td style="padding:0.3rem 0.4rem;"><strong>{{ sel.te_name }}</strong></td>
               <td style="padding:0.3rem 0.4rem;">
-                <form method="post" action="/admin/trial-entry-selections/{{ sel.sel_id }}/update" style="display:flex; gap:0.25rem; align-items:center; margin:0;">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                  {% if sel.is_test_class %}
-                    <em style="color:#888;">test</em>
-                  {% else %}
-                    <select name="trial_event_class_id" style="font-size:0.85em;">
-                      {% for cid, cname in sel.class_choices %}
-                        <option value="{{ cid }}" {% if cid == sel.class_id %}selected{% endif %}>{{ cname }}</option>
-                      {% endfor %}
-                    </select>
-                  {% endif %}
-                  <select name="akc_trial_pref" style="font-size:0.85em;">
-                    <option value="event_1" {% if sel.akc_trial_pref == 'event_1' %}selected{% endif %}>E1</option>
-                    <option value="event_2" {% if sel.akc_trial_pref == 'event_2' %}selected{% endif %}>E2</option>
-                  </select>
-                  <select name="day_preference" style="font-size:0.85em;">
-                    <option value="" {% if not sel.day_preference %}selected{% endif %}>—</option>
-                    <option value="friday" {% if sel.day_preference == 'friday' %}selected{% endif %}>Fri</option>
-                    <option value="saturday" {% if sel.day_preference == 'saturday' %}selected{% endif %}>Sat</option>
-                    <option value="sunday" {% if sel.day_preference == 'sunday' %}selected{% endif %}>Sun</option>
-                  </select>
-                  <button type="submit" class="btn btn-secondary btn-sm">Save</button>
-                </form>
+                {% if sel.is_test_class %}<em style="color:#888;">test</em>
+                {% else %}{{ sel.class_name or '—' }}{% endif %}
               </td>
               <td style="padding:0.3rem 0.4rem;">{{ sel.trial_label or '—' }}</td>
               <td style="padding:0.3rem 0.4rem;">{{ sel.day_preference | title if sel.day_preference else '—' }}</td>
               <td style="padding:0.3rem 0.4rem;">{{ sel.call_number or '—' }}</td>
-              <td style="padding:0.3rem 0.4rem;">
-                <form method="post" action="/admin/trial-entry-selections/{{ sel.sel_id }}/delete" style="display:inline;"
-                      onsubmit="return confirm('Remove {{ sel.te_name }} from this entry?')">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                  <button type="submit" class="btn btn-danger btn-sm">Remove</button>
-                </form>
-              </td>
             </tr>
           {% endfor %}
         </tbody>

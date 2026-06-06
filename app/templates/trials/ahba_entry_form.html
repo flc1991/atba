@@ -17,9 +17,9 @@
 
   {% if admin_mode %}
     <fieldset>
-      <legend>Link to user account</legend>
+      <legend>Entrant</legend>
       <div class="form-group">
-        <label for="user_id">User <span class="form-hint">(optional — fills owner fields and lets you pick from this user's saved dogs)</span></label>
+        <label for="user_id">Entrant <span class="form-hint">(the person making this entry — do not pick yourself. Fills the owner fields below and lets you pick from their saved dogs.)</span></label>
         <select id="user_id" name="user_id">
           <option value="">— None —</option>
           {% for u in users %}
