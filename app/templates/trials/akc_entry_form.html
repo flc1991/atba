@@ -371,7 +371,11 @@
       <div class="form-group">
         <label for="signature">
           Signature (type your full name) <span class="required">*</span><br>
-          <span class="form-hint">I certify the above information is correct and agree to abide by AKC rules.</span>
+          <span class="form-hint">
+            I certify the above information is correct and agree to abide by all AKC rules,
+            including the agreements, hold-harmless terms, and event regulations set out in the
+            event's <strong>premium list</strong> (download it from the trial weekend page).
+          </span>
         </label>
         <input type="text" id="signature" name="signature"
                value="{{ form_data.signature or '' }}">
@@ -383,6 +387,11 @@
           <input type="checkbox" name="is_paid" value="1" {% if form_data.get('is_paid') %}checked{% endif %}>
           Mark this entry as paid
         </label>
+      </div>
+      <div class="form-group">
+        <label for="payment_reference">Payment reference <span class="form-hint">(check #, "Cash", etc. — optional)</span></label>
+        <input type="text" id="payment_reference" name="payment_reference"
+               value="{{ form_data.payment_reference or '' }}" placeholder="e.g. Check #4321">
       </div>
     {% endif %}
 

@@ -8,6 +8,7 @@
 <div style="margin-bottom:1rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
   <a href="/admin/events/{{ event.id }}/edit" class="btn btn-secondary btn-sm">&larr; Event</a>
   <a href="/admin/events/{{ event.id }}/call-numbers" class="btn btn-secondary btn-sm">Call Numbers</a>
+  <a href="/admin/events/{{ event.id }}/export-trial.xlsx" class="btn btn-secondary btn-sm" title="Download AKC + AHBA entries, payment summary, and event counts as an Excel workbook">Export to Excel</a>
 </div>
 
 <div style="margin-bottom:1.5rem; padding:0.75rem 1rem; background:#f0f8ff; border-left:4px solid #2980b9; border-radius:4px;">
@@ -37,9 +38,11 @@
         <a href="/admin/trial-entries/{{ entry.id }}" class="btn btn-secondary btn-sm">Edit</a>
         <form method="post" action="/admin/trial-entries/{{ entry.id }}/toggle-paid" style="display:inline;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <button type="submit" class="btn btn-secondary btn-sm">
-            Mark {{ 'unpaid' if entry.is_paid else 'paid' }}
-          </button>
+          {% if entry.is_paid %}
+            <button type="submit" class="btn btn-secondary btn-sm">Mark unpaid</button>
+          {% else %}
+            <button type="submit" class="btn btn-sm" style="background:#27ae60; color:#fff;">Mark paid</button>
+          {% endif %}
         </form>
         <form method="post" action="/admin/trial-entries/{{ entry.id }}/send-verification" style="display:inline;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

@@ -60,24 +60,24 @@
   </fieldset>
 
   <fieldset id="pricing-fieldset">
-    <legend>Pricing <span class="form-hint">(Fun Run / Smart Dog Day only — leave blank for trial events)</span></legend>
+    <legend>Pricing <span class="form-hint">(Fun Run / Smart Dog Day only)</span></legend>
     <div class="form-row">
       <div class="form-group">
-        <label for="fee_pre_member_cents">Pre-entry member (cents)</label>
-        <input type="number" id="fee_pre_member_cents" name="fee_pre_member_cents" min="0"
-               value="{{ form_data.fee_pre_member_cents or '' }}" placeholder="e.g. 2000">
+        <label for="fee_pre_member_dollars">Pre-entry member ($)</label>
+        <input type="number" id="fee_pre_member_dollars" name="fee_pre_member_dollars" min="0" step="0.01"
+               value="{{ '%.2f'|format(form_data.fee_pre_member_cents / 100) if form_data.fee_pre_member_cents else '' }}" placeholder="e.g. 20.00">
       </div>
       <div class="form-group">
-        <label for="fee_pre_general_cents">Pre-entry general (cents)</label>
-        <input type="number" id="fee_pre_general_cents" name="fee_pre_general_cents" min="0"
-               value="{{ form_data.fee_pre_general_cents or '' }}" placeholder="e.g. 2500">
+        <label for="fee_pre_general_dollars">Pre-entry general ($)</label>
+        <input type="number" id="fee_pre_general_dollars" name="fee_pre_general_dollars" min="0" step="0.01"
+               value="{{ '%.2f'|format(form_data.fee_pre_general_cents / 100) if form_data.fee_pre_general_cents else '' }}" placeholder="e.g. 25.00">
       </div>
     </div>
     <div class="form-row">
       <div class="form-group">
-        <label for="fee_late_cents">Late / day-of (cents)</label>
-        <input type="number" id="fee_late_cents" name="fee_late_cents" min="0"
-               value="{{ form_data.fee_late_cents or '' }}" placeholder="e.g. 3000">
+        <label for="fee_late_dollars">Late / day-of ($)</label>
+        <input type="number" id="fee_late_dollars" name="fee_late_dollars" min="0" step="0.01"
+               value="{{ '%.2f'|format(form_data.fee_late_cents / 100) if form_data.fee_late_cents else '' }}" placeholder="e.g. 30.00">
       </div>
       <div class="form-group">
         <label for="pre_entry_close_dt">Pre-entry closes (ET)</label>
@@ -86,6 +86,19 @@
       </div>
     </div>
   </fieldset>
+
+  <script>
+    (function () {
+      var typeSel = document.getElementById('event_type');
+      var pricingFs = document.getElementById('pricing-fieldset');
+      function syncPricingVisibility() {
+        if (!typeSel || !pricingFs) return;
+        pricingFs.style.display = (typeSel.value === 'trial') ? 'none' : '';
+      }
+      if (typeSel) typeSel.addEventListener('change', syncPricingVisibility);
+      syncPricingVisibility();
+    })();
+  </script>
 
   <div style="margin-top:1rem;">
     <button type="submit" class="btn btn-primary">{% if event %}Save Changes{% else %}Create Event{% endif %}</button>
@@ -104,9 +117,9 @@
     </form>
     {% if not event.is_deleted %}
       <form method="post" action="/admin/events/{{ event.id }}/delete"
-            onsubmit="return confirm('Soft-delete this event?')">
+            onsubmit="return confirm('Archive this event? It will be hidden from listings but can be restored by an admin.')">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button type="submit" class="btn btn-danger btn-sm">Delete (soft)</button>
+        <button type="submit" class="btn btn-danger" title="Hides the event from listings; existing entries are preserved and the event can be restored.">Archive event</button>
       </form>
     {% endif %}
     <form method="post" action="/admin/events/{{ event.id }}/send-all-verifications"

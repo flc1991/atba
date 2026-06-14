@@ -125,4 +125,22 @@ def serve_pdf(
     if not os.path.isfile(path):
         raise HTTPException(status_code=404, detail="File not found on disk")
 
-    return FileResponse(path, media_type="application/pdf", filename=pdf.filename)
+    event = db.get(Event, event_id)
+    friendly = _friendly_pdf_filename(event, governing_body.upper(), doc_type)
+    return FileResponse(path, media_type="application/pdf", filename=friendly)
+
+
+def _friendly_pdf_filename(event, governing_body: str, doc_type: str) -> str:
+    """Build a human-readable download filename like
+    '2026 ATBA July AKC Trial Premium.pdf' from the stored PDF metadata."""
+    if event is None:
+        return f"{governing_body}_{doc_type}.pdf"
+    year = event.start_date.year
+    month = event.start_date.strftime("%B")
+    type_label = {
+        "trial": "Trial",
+        "fun_run": "Fun Run",
+        "smart_dog_day": "Smart Dog Day",
+    }.get(event.event_type, event.event_type.replace("_", " ").title())
+    doc_label = doc_type.replace("_", " ").title()
+    return f"{year} ATBA {month} {governing_body} {type_label} {doc_label}.pdf"

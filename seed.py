@@ -164,6 +164,18 @@ def _backfill_trial_fields(db: Session) -> None:
         if ev and ev.description == old_desc:
             ev.description = new_desc
 
+    # --- Rename "Fun Match" → "Fun Run" (event titles + description text) ---
+    for old_title, new_title in [
+        ("2026 May Fun Match",     "2026 May Fun Run"),
+        ("2026 October Fun Match", "2026 October Fun Run"),
+    ]:
+        ev = db.query(Event).filter_by(title=old_title).first()
+        if ev and not db.query(Event).filter_by(title=new_title).first():
+            ev.title = new_title
+    # Also rewrite "Fun Match" → "Fun Run" anywhere it appears in event descriptions.
+    for ev in db.query(Event).filter(Event.description.like("%Fun Match%")).all():
+        ev.description = ev.description.replace("Fun Match", "Fun Run")
+
 
 def seed(db: Session) -> None:
     # ------------------------------------------------------------------ admin user
@@ -271,15 +283,15 @@ def seed(db: Session) -> None:
         db.flush()
         _add_ahba_trial_events(db, ahba.id)
 
-    # ------------------------------------------------------------------ May 2026 — fun match
+    # ------------------------------------------------------------------ May 2026 — fun run
     fun_run_description = (
-        "ATBA Herding Trial Fun Match — open to all breeds. Up to 4 entries per dog; "
+        "ATBA Herding Trial Fun Run — open to all breeds. Up to 4 entries per dog; "
         "the same event may be entered more than once, and you can choose whether each "
         "run is judged or unjudged."
     )
-    if not db.query(Event).filter_by(title="2026 May Fun Match").first():
+    if not db.query(Event).filter_by(title="2026 May Fun Run").first():
         db.add(Event(
-            title="2026 May Fun Match",
+            title="2026 May Fun Run",
             event_type="fun_run",
             start_date=date(2026, 5, 9),
             end_date=date(2026, 5, 9),
@@ -372,12 +384,12 @@ def seed(db: Session) -> None:
     if not db.query(TrialEvent).filter_by(trial_id=july_ahba.id).first():
         _add_ahba_trial_events(db, july_ahba.id)
 
-    # ------------------------------------------------------------------ Oct 2026 — fun match
+    # ------------------------------------------------------------------ Oct 2026 — fun run
     # No pricing yet — pricing is what gates the homepage "registering" filter,
     # so leaving fees null marks the event as not-yet-open.
-    if not db.query(Event).filter_by(title="2026 October Fun Match").first():
+    if not db.query(Event).filter_by(title="2026 October Fun Run").first():
         db.add(Event(
-            title="2026 October Fun Match",
+            title="2026 October Fun Run",
             event_type="fun_run",
             start_date=date(2026, 10, 3),
             end_date=date(2026, 10, 3),

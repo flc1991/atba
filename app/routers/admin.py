@@ -5,7 +5,7 @@ import shutil
 from datetime import date
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -105,7 +105,7 @@ def dashboard(
         "recent_regs": recent_regs,
         "total_entries": db.query(TrialEntry).count(),
         "total_regs": db.query(Registration).count(),
-        "total_members": db.query(Member).count(),
+        "total_members": db.query(Member).filter(Member.status.in_(("pending", "member"))).count(),
     })
     return templates.TemplateResponse(request, "admin/dashboard.html", ctx)
 
@@ -488,6 +488,173 @@ def trial_entries_list(
     return templates.TemplateResponse(request, "admin/trial_entries.html", ctx)
 
 
+@router.get("/events/{event_id}/export-trial.xlsx")
+def export_trial_xlsx(
+    event_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Export a trial weekend's AKC + AHBA entries to a multi-sheet xlsx workbook."""
+    import io
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    event = _get_event(event_id, db)
+    if event.event_type != "trial":
+        raise HTTPException(status_code=400, detail="Excel export is only for trial events.")
+
+    trials_by_body = {
+        t.governing_body: t
+        for t in db.query(Trial).filter_by(event_id=event_id).all()
+    }
+    all_entries = (
+        db.query(TrialEntry)
+        .filter_by(event_id=event_id)
+        .order_by(TrialEntry.governing_body, TrialEntry.handler_name, TrialEntry.id)
+        .all()
+    )
+
+    wb = Workbook()
+
+    # ---- Sheet 1: Entry Data (one row per selection) ----
+    ws = wb.active
+    ws.title = "Entry Data"
+    header = [
+        "Body", "Handler", "Dog", "Breed", "Sex", "Reg #",
+        "Event (class/test)", "Class", "Trial", "Day pref",
+        "Call #", "Email", "Phone", "Paid", "Payment ref",
+    ]
+    ws.append(header)
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill(start_color="2C6E2E", end_color="2C6E2E", fill_type="solid")
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.alignment = Alignment(horizontal="left")
+
+    for entry in all_entries:
+        body = entry.governing_body
+        trial = trials_by_body.get(body)
+        sels = db.query(TrialEntrySelection).filter_by(trial_entry_id=entry.id).all()
+        if not sels:
+            ws.append([
+                body, entry.handler_name, entry.dog_name, entry.dog_breed or "",
+                entry.dog_sex or "", entry.dog_registration_number or "",
+                "(no selections)", "", "", "", "",
+                entry.handler_email or "", entry.handler_phone or "",
+                "Yes" if entry.is_paid else "No",
+                entry.payment_reference or entry.paypal_order_id or "",
+            ])
+            continue
+        for sel in sels:
+            te = db.get(TrialEvent, sel.trial_event_id)
+            cls = (
+                db.get(TrialEventClass, sel.trial_event_class_id)
+                if sel.trial_event_class_id is not None else None
+            )
+            trial_label = ""
+            if sel.akc_trial_pref == "event_1":
+                if trial and body == "AKC" and trial.akc_event_number:
+                    trial_label = f"Event 1 (#{trial.akc_event_number})"
+                elif trial and body == "AHBA" and trial.ahba_event_1_judge:
+                    trial_label = f"Event 1 ({trial.ahba_event_1_judge})"
+                else:
+                    trial_label = "Event 1"
+            elif sel.akc_trial_pref == "event_2":
+                if trial and body == "AKC" and trial.akc_event_number_2:
+                    trial_label = f"Event 2 (#{trial.akc_event_number_2})"
+                elif trial and body == "AHBA" and trial.ahba_event_2_judge:
+                    trial_label = f"Event 2 ({trial.ahba_event_2_judge})"
+                else:
+                    trial_label = "Event 2"
+            ws.append([
+                body, entry.handler_name, entry.dog_name, entry.dog_breed or "",
+                entry.dog_sex or "", entry.dog_registration_number or "",
+                te.name if te else "", cls.name if cls else ("test" if te and te.is_test_class else ""),
+                trial_label, sel.day_preference or "",
+                sel.call_number or "",
+                entry.handler_email or "", entry.handler_phone or "",
+                "Yes" if entry.is_paid else "No",
+                entry.payment_reference or entry.paypal_order_id or "",
+            ])
+    # Auto-size columns
+    for col in ws.columns:
+        max_len = max((len(str(c.value)) for c in col if c.value), default=10)
+        ws.column_dimensions[col[0].column_letter].width = min(max_len + 2, 40)
+
+    # ---- Sheet 2: Payment Summary ----
+    pay = wb.create_sheet("Payment Summary")
+    pay.append(["Body", "Handler", "Dog", "Total Fee ($)", "Paid", "Payment Reference"])
+    for cell in pay[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill(start_color="2C6E2E", end_color="2C6E2E", fill_type="solid")
+    body_totals: dict[str, dict[str, float]] = {"AKC": {"all": 0, "paid": 0}, "AHBA": {"all": 0, "paid": 0}}
+    for entry in all_entries:
+        fee = (entry.total_fee_cents or 0) / 100
+        pay.append([
+            entry.governing_body,
+            entry.handler_name,
+            entry.dog_name,
+            round(fee, 2),
+            "Yes" if entry.is_paid else "No",
+            entry.payment_reference or entry.paypal_order_id or "",
+        ])
+        b = entry.governing_body
+        if b in body_totals:
+            body_totals[b]["all"] += fee
+            if entry.is_paid:
+                body_totals[b]["paid"] += fee
+    pay.append([])
+    pay.append(["", "", "AKC total billed", round(body_totals["AKC"]["all"], 2), "", ""])
+    pay.append(["", "", "AKC total collected", round(body_totals["AKC"]["paid"], 2), "", ""])
+    pay.append(["", "", "AHBA total billed", round(body_totals["AHBA"]["all"], 2), "", ""])
+    pay.append(["", "", "AHBA total collected", round(body_totals["AHBA"]["paid"], 2), "", ""])
+    grand_billed = body_totals["AKC"]["all"] + body_totals["AHBA"]["all"]
+    grand_paid = body_totals["AKC"]["paid"] + body_totals["AHBA"]["paid"]
+    pay.append(["", "", "GRAND TOTAL BILLED", round(grand_billed, 2), "", ""])
+    pay.append(["", "", "GRAND TOTAL COLLECTED", round(grand_paid, 2), "", ""])
+    for col in pay.columns:
+        max_len = max((len(str(c.value)) for c in col if c.value), default=10)
+        pay.column_dimensions[col[0].column_letter].width = min(max_len + 2, 36)
+
+    # ---- Sheet 3: Event Count Summary ----
+    cnt = wb.create_sheet("Event Counts")
+    cnt.append(["Body", "Event", "Class / Test", "# of entries"])
+    for cell in cnt[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill(start_color="2C6E2E", end_color="2C6E2E", fill_type="solid")
+    # Count selections per (body, te_name, class_name)
+    counts: dict[tuple[str, str, str], int] = {}
+    for entry in all_entries:
+        body = entry.governing_body
+        sels = db.query(TrialEntrySelection).filter_by(trial_entry_id=entry.id).all()
+        for sel in sels:
+            te = db.get(TrialEvent, sel.trial_event_id)
+            cls = (
+                db.get(TrialEventClass, sel.trial_event_class_id)
+                if sel.trial_event_class_id is not None else None
+            )
+            te_name = te.name if te else "(unknown)"
+            class_name = cls.name if cls else ("test" if te and te.is_test_class else "")
+            key = (body, te_name, class_name)
+            counts[key] = counts.get(key, 0) + 1
+    for (body, te_name, class_name), n in sorted(counts.items()):
+        cnt.append([body, te_name, class_name, n])
+    for col in cnt.columns:
+        max_len = max((len(str(c.value)) for c in col if c.value), default=10)
+        cnt.column_dimensions[col[0].column_letter].width = min(max_len + 2, 40)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    safe_title = (event.title or "trial").replace(" ", "_").replace("/", "-")
+    filename = f"{safe_title}_ATBA_Entries.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/trial-entries/{entry_id}", response_class=HTMLResponse)
 def trial_entry_detail(
     entry_id: int,
@@ -573,6 +740,7 @@ async def trial_entry_edit(
     entry.dog_breed = form.get("dog_breed", "").strip() or None
     entry.dog_registration_number = form.get("dog_registration_number", "").strip() or None
     entry.is_paid = form.get("is_paid") == "1"
+    entry.payment_reference = (form.get("payment_reference") or "").strip() or None
     db.commit()
     flash(request, "Entry updated.", "success")
     return RedirectResponse(f"/admin/trial-entries/{entry_id}", status_code=303)
@@ -800,6 +968,7 @@ def _save_manual_entry(
         signature=fget("signature") or None,
         total_fee_cents=_compute_fee_from_rows(selection_rows, trial_events),
         is_paid=bool(form.get("is_paid")),
+        payment_reference=(form.get("payment_reference") or "").strip() or None,
         is_manual_entry=True,
     )
     db.add(entry)
@@ -1037,7 +1206,7 @@ async def registration_manual(
         country=form.get("country", "US"),
         dog_name=form.get("dog_name", "").strip(),
         pricing_tier=form.get("pricing_tier", "late"),
-        fee_cents=int(form.get("fee_cents", 0)),
+        fee_cents=int(round(float(form.get("fee_dollars", 0) or 0) * 100)),
         is_paid=form.get("is_paid") == "1",
         is_manual_entry=True,
     )
@@ -1642,9 +1811,20 @@ def _apply_event_form(event: Event, form) -> None:
     elif start_raw:
         event.end_date = event.start_date
 
-    for field in ("fee_pre_member_cents", "fee_pre_general_cents", "fee_late_cents"):
-        raw = form.get(field, "").strip()
-        setattr(event, field, int(raw) if raw else None)
+    # Form posts dollar values; persist as cents.
+    for cents_field, dollar_field in (
+        ("fee_pre_member_cents",  "fee_pre_member_dollars"),
+        ("fee_pre_general_cents", "fee_pre_general_dollars"),
+        ("fee_late_cents",        "fee_late_dollars"),
+    ):
+        raw = form.get(dollar_field, "").strip()
+        if raw:
+            try:
+                setattr(event, cents_field, int(round(float(raw) * 100)))
+            except ValueError:
+                pass
+        else:
+            setattr(event, cents_field, None)
 
     pre_close_raw = form.get("pre_entry_close_dt", "").strip()
     if pre_close_raw:

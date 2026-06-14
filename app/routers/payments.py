@@ -141,8 +141,11 @@ def payment_return(
         rec.is_paid = True
         # Record the PayPal transaction id if it was passed back (PDT/auto-return).
         tx = request.query_params.get("tx") or request.query_params.get("txn_id")
-        if tx and not rec.paypal_order_id:
-            rec.paypal_order_id = tx
+        if tx:
+            if not rec.paypal_order_id:
+                rec.paypal_order_id = tx
+            if not rec.payment_reference:
+                rec.payment_reference = f"PayPal: {tx}"
         db.commit()
     flash(request, "Payment received — your registration is confirmed!", "success")
     return _redirect_to_confirmation(kind, rec)

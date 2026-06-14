@@ -16,6 +16,7 @@ aiofiles==24.1.0
 python-dotenv==1.1.0
 tzdata==2025.2                  # IANA timezone data for Windows (zoneinfo)
 pycountry==24.6.1
+openpyxl==3.1.5
 pytest==8.3.5
 pytest-asyncio==0.25.3
 httpx

@@ -40,6 +40,10 @@
       <div class="form-group">
         <label><input type="checkbox" name="is_paid" value="1" {% if entry.is_paid %}checked{% endif %}> Paid</label>
       </div>
+      <div class="form-group">
+        <label>Payment reference <span class="form-hint">(PayPal txn id, check #, "Cash", etc.)</span></label>
+        <input type="text" name="payment_reference" value="{{ entry.payment_reference or '' }}" placeholder="e.g. Check #4321 or Cash">
+      </div>
       <button type="submit" class="btn btn-primary">Save</button>
     </form>
   </div>
@@ -48,7 +52,7 @@
   <div>
     <h2>Entry Details</h2>
     <table>
-      <tr><td style="color:#666;">PayPal Order</td><td>{{ entry.paypal_order_id or '—' }}</td></tr>
+      <tr><td style="color:#666;">Payment reference</td><td>{{ entry.payment_reference or entry.paypal_order_id or '—' }}</td></tr>
       <tr><td style="color:#666;">Total Fee</td><td>${{ "%.2f" | format(entry.total_fee_cents / 100) }}</td></tr>
       <tr><td style="color:#666;">Source</td>
           <td>{% if entry.is_manual_entry %}Manual (admin){% else %}Online{% endif %}</td></tr>

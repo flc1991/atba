@@ -129,6 +129,9 @@ class TrialEntry(Base):
     # Payment
     total_fee_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     paypal_order_id: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True)
+    # Free-text payment reference: PayPal transaction id for online payments,
+    # or a check / cash reference entered by an admin for manual entries.
+    payment_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_paid: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     is_manual_entry: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
