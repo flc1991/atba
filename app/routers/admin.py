@@ -19,6 +19,7 @@ from app.models.user import User
 from app.utils.countries import get_country_choices
 from app.utils.flash import flash
 from app.utils.registration_windows import compute_ahba_close, compute_akc_close, get_trial_status
+from app.utils.registry import resolve_ahba_number_type
 from app.routers.trials import _parse_selection_rows, _compute_fee_from_rows
 
 router = APIRouter(tags=["admin"])
@@ -725,6 +726,14 @@ def export_trial_xlsx(
         max_len = max((len(str(c.value)) for c in col if c.value), default=10)
         cnt.column_dimensions[col[0].column_letter].width = min(max_len + 2, 40)
 
+    # openpyxl turns any string starting with "=" into a formula. Names etc. are
+    # entrant-supplied and this export has no formulas, so force plain text.
+    for sheet in wb.worksheets:
+        for row in sheet.iter_rows():
+            for cell in row:
+                if cell.data_type == "f":
+                    cell.data_type = "s"
+
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -821,6 +830,8 @@ async def trial_entry_edit(
     entry.dog_name = form.get("dog_name", entry.dog_name).strip()
     entry.dog_breed = form.get("dog_breed", "").strip() or None
     entry.dog_registration_number = form.get("dog_registration_number", "").strip() or None
+    if entry.governing_body == "AHBA" and "ahba_number_type" in form:
+        entry.ahba_number_type = resolve_ahba_number_type(form)
     entry.is_paid = form.get("is_paid") == "1"
     entry.payment_reference = (form.get("payment_reference") or "").strip() or None
     db.commit()
@@ -984,14 +995,6 @@ def _manual_entry_ctx(request: Request, admin: User, db: Session, event_id: int,
     return ctx, event, trial, trial_events, te_classes_map
 
 
-def _resolve_ahba_number_type(form) -> str | None:
-    """Read ahba_number_type from form; if 'Other', use the custom text box."""
-    raw = (form.get("ahba_number_type") or "").strip()
-    if raw == "Other":
-        return (form.get("ahba_number_type_other") or "").strip() or None
-    return raw or None
-
-
 def _save_manual_entry(
     *, request: Request, db: Session, event, trial, trial_events,
     te_classes_map, form, governing_body: str,
@@ -1053,7 +1056,7 @@ def _save_manual_entry(
         akc_handler_name=fget("akc_handler_name") or None,
         akc_handler_address=fget("akc_handler_address") or None,
         akc_separate_entries=bool(form.get("akc_separate_entries")),
-        ahba_number_type=_resolve_ahba_number_type(form),
+        ahba_number_type=resolve_ahba_number_type(form),
         ahba_agent_name=fget("ahba_agent_name") or None,
         ahba_agent_phone=fget("ahba_agent_phone") or None,
         ahba_agent_email=fget("ahba_agent_email") or None,
@@ -1819,7 +1822,7 @@ async def user_dog_add(
         dog_dob=dog_dob,
         akc_number_type=_f("akc_number_type"),
         akc_registration_number=_f("akc_registration_number"),
-        ahba_number_type=_resolve_ahba_number_type(form),
+        ahba_number_type=resolve_ahba_number_type(form),
         ahba_registration_number=_f("ahba_registration_number"),
     ))
     db.commit()

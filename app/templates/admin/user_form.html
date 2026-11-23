@@ -89,7 +89,7 @@
           {% if dog.ahba_registration_number %}<br><span style="font-size:0.85em; color:#666;">AHBA: {% if dog.ahba_number_type %}{{ dog.ahba_number_type }} {% endif %}{{ dog.ahba_registration_number }}</span>{% endif %}
         </div>
         <form method="post" action="/admin/users/{{ user.id }}/dogs/{{ dog.id }}/delete"
-              onsubmit="return confirm('Remove {{ dog.dog_name }} from this user?')">
+              onsubmit='return confirm({{ ("Remove " ~ dog.dog_name ~ " from this user?")|tojson }})'>
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <button type="submit" class="btn btn-danger btn-sm">Remove</button>
         </form>

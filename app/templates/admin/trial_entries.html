@@ -51,7 +51,7 @@
           </button>
         </form>
         <form method="post" action="/admin/trial-entries/{{ entry.id }}/delete" style="display:inline;"
-              onsubmit="return confirm('Delete this entire entry for {{ entry.dog_name }}?')">
+              onsubmit='return confirm({{ ("Delete this entire entry for " ~ entry.dog_name ~ "?")|tojson }})'>
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <button type="submit" class="btn btn-danger btn-sm">Delete entry</button>
         </form>

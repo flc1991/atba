@@ -15,6 +15,7 @@ from app.utils.countries import get_country_choices
 from app.utils.account_linking import find_user_by_email
 from app.utils.flash import flash
 from app.utils.registration_windows import get_trial_status
+from app.utils.registry import resolve_ahba_number_type
 
 router = APIRouter(tags=["trials"])
 templates = Jinja2Templates(directory="app/templates")
@@ -517,11 +518,7 @@ async def ahba_entry_post(
 
     dog_name            = fget("dog_name")
     dog_reg_number      = fget("dog_registration_number") or None
-    ahba_number_type_raw = fget("ahba_number_type") or None
-    if ahba_number_type_raw == "Other":
-        ahba_number_type = fget("ahba_number_type_other") or None
-    else:
-        ahba_number_type = ahba_number_type_raw
+    ahba_number_type    = resolve_ahba_number_type(form)
     dog_sex             = fget("dog_sex") or None
     dog_breed           = fget("dog_breed") or None
     dog_place_of_birth  = fget("dog_place_of_birth") or None

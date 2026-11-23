@@ -60,7 +60,7 @@
             <strong>Breed:</strong>             <span>{{ entry.dog_breed or '—' }}</span>
             <strong>Sex:</strong>               <span>{{ ({'M':'Male','F':'Female'}).get(entry.dog_sex, '—') }}</span>
             <strong>Date of birth:</strong>     <span>{{ entry.dog_dob.strftime('%B %d, %Y') if entry.dog_dob else '—' }}</span>
-            <strong>Registration #:</strong>    <span>{% if entry.akc_number_type %}{{ entry.akc_number_type }} {% endif %}{{ entry.dog_registration_number or '—' }}</span>
+            <strong>Registration #:</strong>    <span>{% if entry.akc_number_type %}{{ entry.akc_number_type }} {% endif %}{% if entry.ahba_number_type %}{{ entry.ahba_number_type }} {% endif %}{{ entry.dog_registration_number or '—' }}</span>
             {% if entry.akc_foreign_country %}<strong>Foreign country:</strong><span>{{ entry.akc_foreign_country }}</span>{% endif %}
             {% if entry.dog_place_of_birth %}<strong>Place of birth:</strong><span>{{ entry.dog_place_of_birth }}</span>{% endif %}
             <strong>Sire:</strong>              <span>{{ entry.dog_sire or '—' }}</span>

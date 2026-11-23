@@ -33,6 +33,26 @@
         <label>Breed</label>
         <input type="text" name="dog_breed" value="{{ entry.dog_breed or '' }}">
       </div>
+      {% if entry.governing_body == 'AHBA' %}
+      {% set _known = ('AKC', 'ABCA', 'ISDS') %}
+      {% set _t = entry.ahba_number_type or '' %}
+      {% set _is_other = _t and _t not in _known %}
+      <div class="form-group">
+        <label>Registry type</label>
+        <select name="ahba_number_type"
+                onchange="document.getElementById('ahba-other-group').style.display = this.value === 'Other' ? '' : 'none';">
+          <option value="">— none —</option>
+          {% for t in _known %}
+            <option value="{{ t }}" {% if _t == t %}selected{% endif %}>{{ t }}</option>
+          {% endfor %}
+          <option value="Other" {% if _is_other %}selected{% endif %}>Other (specify)</option>
+        </select>
+      </div>
+      <div class="form-group" id="ahba-other-group" {% if not _is_other %}style="display:none;"{% endif %}>
+        <label>Other registry name</label>
+        <input type="text" name="ahba_number_type_other" value="{{ _t if _is_other else '' }}" placeholder="e.g. NEBCA, CKC, ASCA">
+      </div>
+      {% endif %}
       <div class="form-group">
         <label>Registration number</label>
         <input type="text" name="dog_registration_number" value="{{ entry.dog_registration_number or '' }}">
@@ -135,7 +155,7 @@
           <td style="padding:0.4rem 0.5rem;">
             <form method="post" action="/admin/trial-entry-selections/{{ sel.sel_id }}/delete"
                   style="display:inline;"
-                  onsubmit="return confirm('Remove {{ sel.te_name }} from this entry?')">
+                  onsubmit='return confirm({{ ("Remove " ~ sel.te_name ~ " from this entry?")|tojson }})'>
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <button type="submit" class="btn btn-danger btn-sm">Remove</button>
             </form>
@@ -150,7 +170,7 @@
 
 <h2 style="margin-top:2rem; color:#c0392b;">Danger zone</h2>
 <form method="post" action="/admin/trial-entries/{{ entry.id }}/delete" style="margin-top:0.5rem;"
-      onsubmit="return confirm('Delete this entire entry for {{ entry.dog_name }}? This cannot be undone.')">
+      onsubmit='return confirm({{ ("Delete this entire entry for " ~ entry.dog_name ~ "? This cannot be undone.")|tojson }})'>
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <button type="submit" class="btn btn-danger">Delete entire entry</button>
 </form>

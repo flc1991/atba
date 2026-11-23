@@ -22,7 +22,7 @@
       {% if entry.dog_registration_number %}
       <tr>
         <td style="padding:0.5rem; font-weight:bold;">Reg. Number</td>
-        <td style="padding:0.5rem;">{{ entry.dog_registration_number }}</td>
+        <td style="padding:0.5rem;">{% if entry.ahba_number_type %}{{ entry.ahba_number_type }} {% endif %}{{ entry.dog_registration_number }}</td>
       </tr>
       {% endif %}
       <tr style="background:#f5f5f5;">

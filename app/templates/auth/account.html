@@ -103,7 +103,7 @@
             <form method="post" action="/auth/dogs/{{ dog.id }}/delete" style="margin:0;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <button type="submit" class="btn-link" style="color:#c0392b; font-size:0.85em;"
-                      onclick="return confirm('Remove {{ dog.dog_name }} from your account?')">Remove</button>
+                      onclick='return confirm({{ ("Remove " ~ dog.dog_name ~ " from your account?")|tojson }})'>Remove</button>
             </form>
           </div>
         </div>

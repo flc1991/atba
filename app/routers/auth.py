@@ -13,6 +13,7 @@ from app.utils.account_linking import link_orphan_records
 from app.utils.auth import hash_password, verify_password
 from app.utils.countries import get_country_choices
 from app.utils.flash import flash, get_flash_messages
+from app.utils.registry import resolve_ahba_number_type
 
 router = APIRouter(tags=["auth"])
 templates = Jinja2Templates(directory="app/templates")
@@ -305,14 +306,6 @@ def account_submit(
 # ---------------------------------------------------------------------------
 
 
-def _resolve_ahba_number_type(form) -> str | None:
-    """Read ahba_number_type from form; if 'Other', use the custom text box."""
-    raw = (form.get("ahba_number_type") or "").strip()
-    if raw == "Other":
-        return (form.get("ahba_number_type_other") or "").strip() or None
-    return raw or None
-
-
 @router.post("/dogs/add", response_class=HTMLResponse)
 async def dogs_add(
     request: Request,
@@ -356,7 +349,7 @@ async def dogs_add(
         akc_registration_number=_f("akc_registration_number"),
         akc_foreign_country=_f("akc_foreign_country"),
         dog_dob=dog_dob,
-        ahba_number_type=_resolve_ahba_number_type(form),
+        ahba_number_type=resolve_ahba_number_type(form),
         ahba_registration_number=_f("ahba_registration_number"),
         dog_place_of_birth=_f("dog_place_of_birth"),
     ))
@@ -410,7 +403,7 @@ async def dogs_edit(
     dog.akc_registration_number = _f("akc_registration_number")
     dog.akc_foreign_country = _f("akc_foreign_country")
     dog.dog_dob = dog_dob
-    dog.ahba_number_type = _resolve_ahba_number_type(form)
+    dog.ahba_number_type = resolve_ahba_number_type(form)
     dog.ahba_registration_number = _f("ahba_registration_number")
     dog.dog_place_of_birth = _f("dog_place_of_birth")
     db.commit()
