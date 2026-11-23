@@ -517,6 +517,11 @@ async def ahba_entry_post(
 
     dog_name            = fget("dog_name")
     dog_reg_number      = fget("dog_registration_number") or None
+    ahba_number_type_raw = fget("ahba_number_type") or None
+    if ahba_number_type_raw == "Other":
+        ahba_number_type = fget("ahba_number_type_other") or None
+    else:
+        ahba_number_type = ahba_number_type_raw
     dog_sex             = fget("dog_sex") or None
     dog_breed           = fget("dog_breed") or None
     dog_place_of_birth  = fget("dog_place_of_birth") or None
@@ -539,7 +544,9 @@ async def ahba_entry_post(
     if not dog_name:
         errors.append("Dog's full registered name is required.")
     if not dog_reg_number:
-        errors.append("Registry type and number is required.")
+        errors.append("Registration number is required.")
+    if not ahba_number_type:
+        errors.append("Registry type is required.")
     if not dog_sex:
         errors.append("Sex is required.")
     if not dog_breed:
@@ -596,6 +603,7 @@ async def ahba_entry_post(
         dog_breeder=dog_breeder,
         dog_sire=dog_sire,
         dog_dam=dog_dam,
+        ahba_number_type=ahba_number_type,
         ahba_agent_name=ahba_agent_name,
         ahba_agent_phone=ahba_agent_phone,
         ahba_agent_email=ahba_agent_email,
@@ -636,6 +644,7 @@ async def ahba_entry_post(
             _merge("dog_sire", dog_sire)
             _merge("dog_dam", dog_dam)
             _merge("dog_breeder", dog_breeder)
+            _merge("ahba_number_type", ahba_number_type)
             _merge("ahba_registration_number", dog_reg_number)
             _merge("dog_place_of_birth", dog_place_of_birth)
         else:
@@ -647,6 +656,7 @@ async def ahba_entry_post(
                 dog_sire=dog_sire,
                 dog_dam=dog_dam,
                 dog_breeder=dog_breeder,
+                ahba_number_type=ahba_number_type,
                 ahba_registration_number=dog_reg_number,
                 dog_place_of_birth=dog_place_of_birth,
             ))

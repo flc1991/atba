@@ -24,7 +24,7 @@
           {% if dog.dog_sex %} ({{ 'Male' if dog.dog_sex == 'M' else 'Female' }}){% endif %}
           {% if dog.dog_dob %}<br><span style="font-size:0.85em; color:#666;">DOB: {{ dog.dog_dob.strftime('%B %d, %Y') }}</span>{% endif %}
           {% if dog.akc_registration_number %}<br><span style="font-size:0.85em; color:#666;">AKC: {{ dog.akc_number_type or '' }} {{ dog.akc_registration_number }}</span>{% endif %}
-          {% if dog.ahba_registration_number %}<br><span style="font-size:0.85em; color:#666;">AHBA: {{ dog.ahba_registration_number }}</span>{% endif %}
+          {% if dog.ahba_registration_number %}<br><span style="font-size:0.85em; color:#666;">AHBA: {% if dog.ahba_number_type %}{{ dog.ahba_number_type }} {% endif %}{{ dog.ahba_registration_number }}</span>{% endif %}
           <br><span style="font-size:0.85em; color:#c0392b;">Yes, this is my dog</span>
         </span>
       </label>

@@ -32,6 +32,10 @@ class Dog(Base):
     dog_dob: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     # AHBA-specific
+    # Registry the AHBA number was issued by (AKC, ABCA, ISDS, or a custom
+    # name the owner typed). Free-form string because AHBA accepts a long tail
+    # of working-stock registries we don't pre-enumerate.
+    ahba_number_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     ahba_registration_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
     dog_place_of_birth: Mapped[str | None] = mapped_column(String(100), nullable=True)
 

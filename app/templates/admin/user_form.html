@@ -86,7 +86,7 @@
           {% if dog.dog_breed %} &mdash; {{ dog.dog_breed }}{% endif %}
           {% if dog.dog_sex %} ({{ 'Male' if dog.dog_sex == 'M' else 'Female' }}){% endif %}
           {% if dog.akc_registration_number %}<br><span style="font-size:0.85em; color:#666;">AKC: {{ dog.akc_number_type or '' }} {{ dog.akc_registration_number }}</span>{% endif %}
-          {% if dog.ahba_registration_number %}<br><span style="font-size:0.85em; color:#666;">AHBA: {{ dog.ahba_registration_number }}</span>{% endif %}
+          {% if dog.ahba_registration_number %}<br><span style="font-size:0.85em; color:#666;">AHBA: {% if dog.ahba_number_type %}{{ dog.ahba_number_type }} {% endif %}{{ dog.ahba_registration_number }}</span>{% endif %}
         </div>
         <form method="post" action="/admin/users/{{ user.id }}/dogs/{{ dog.id }}/delete"
               onsubmit="return confirm('Remove {{ dog.dog_name }} from this user?')">
@@ -142,8 +142,23 @@
           <input type="text" name="akc_registration_number">
         </div>
         <div class="form-group">
-          <label>AHBA Registry &amp; Number</label>
+          <label>AHBA Registry Type</label>
+          <select name="ahba_number_type"
+                  onchange="document.getElementById('ahba-other-group').style.display = this.value === 'Other' ? '' : 'none';">
+            <option value="">— none —</option>
+            <option value="AKC">AKC</option>
+            <option value="ABCA">ABCA</option>
+            <option value="ISDS">ISDS</option>
+            <option value="Other">Other (specify)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>AHBA Registration Number</label>
           <input type="text" name="ahba_registration_number">
+        </div>
+        <div class="form-group" id="ahba-other-group" style="grid-column:1/-1; display:none;">
+          <label>Other registry name</label>
+          <input type="text" name="ahba_number_type_other" placeholder="e.g. NEBCA, CKC, ASCA">
         </div>
       </div>
       <button type="submit" class="btn btn-primary" style="margin-top:1rem;">Save Dog</button>

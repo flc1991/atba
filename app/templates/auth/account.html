@@ -93,7 +93,7 @@
             {% if dog.dog_sex %} ({{ 'Male' if dog.dog_sex == 'M' else 'Female' }}){% endif %}
             {% if dog.dog_dob %}<br><span style="font-size:0.85em; color:#666;">DOB: {{ dog.dog_dob.strftime('%B %d, %Y') }}</span>{% endif %}
             {% if dog.akc_registration_number %}<br><span style="font-size:0.85em; color:#666;">AKC: {{ dog.akc_number_type or '' }} {{ dog.akc_registration_number }}</span>{% endif %}
-            {% if dog.ahba_registration_number %}<br><span style="font-size:0.85em; color:#666;">AHBA: {{ dog.ahba_registration_number }}</span>{% endif %}
+            {% if dog.ahba_registration_number %}<br><span style="font-size:0.85em; color:#666;">AHBA: {% if dog.ahba_number_type %}{{ dog.ahba_number_type }} {% endif %}{{ dog.ahba_registration_number }}</span>{% endif %}
           </div>
           <div style="flex-shrink:0; margin-left:1rem; display:flex; gap:0.75rem; align-items:flex-start;">
             <button type="button" class="btn-link" style="font-size:0.85em;"
@@ -175,14 +175,33 @@
             </fieldset>
             <fieldset style="margin-top:0.75rem;">
               <legend style="font-size:0.9rem; font-weight:600;">AHBA</legend>
-              <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem 1rem;">
+              {% set _t = dog.ahba_number_type or '' %}
+              {% set _known = ('AKC', 'ABCA', 'ISDS') %}
+              {% set _is_other = _t and _t not in _known %}
+              <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.5rem 1rem;">
                 <div class="form-group">
-                  <label>Registry &amp; Number</label>
+                  <label>Registry Type</label>
+                  <select name="ahba_number_type" class="ahba-type-select" data-target="edit-dog-{{ dog.id }}">
+                    <option value="">— none —</option>
+                    {% for t in _known %}
+                      <option value="{{ t }}" {% if _t == t %}selected{% endif %}>{{ t }}</option>
+                    {% endfor %}
+                    <option value="Other" {% if _is_other %}selected{% endif %}>Other (specify)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Registration Number</label>
                   <input type="text" name="ahba_registration_number" value="{{ dog.ahba_registration_number or '' }}">
                 </div>
                 <div class="form-group">
                   <label>Place of Birth</label>
                   <input type="text" name="dog_place_of_birth" value="{{ dog.dog_place_of_birth or '' }}">
+                </div>
+                <div class="form-group ahba-other-group" data-target="edit-dog-{{ dog.id }}"
+                     style="grid-column:1/-1; {% if not _is_other %}display:none;{% endif %}">
+                  <label>Other registry name</label>
+                  <input type="text" name="ahba_number_type_other"
+                         value="{{ _t if _is_other else '' }}" placeholder="e.g. NEBCA, CKC, ASCA">
                 </div>
               </div>
             </fieldset>
@@ -270,14 +289,28 @@
 
       <fieldset style="margin-top:0.75rem;">
         <legend style="font-size:0.9rem; font-weight:600;">AHBA Information <span class="form-hint">(optional)</span></legend>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem 1rem; align-items:start;">
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.75rem 1rem; align-items:start;">
           <div class="form-group">
-            <label>Registry &amp; Number</label>
-            <input type="text" name="ahba_registration_number" placeholder="e.g. AHBA 12345">
+            <label>Registry Type</label>
+            <select name="ahba_number_type" class="ahba-type-select" data-target="add-dog">
+              <option value="">— none —</option>
+              <option value="AKC">AKC</option>
+              <option value="ABCA">ABCA</option>
+              <option value="ISDS">ISDS</option>
+              <option value="Other">Other (specify)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Registration Number</label>
+            <input type="text" name="ahba_registration_number" placeholder="e.g. PAL301838">
           </div>
           <div class="form-group">
             <label>Place of Birth</label>
             <input type="text" name="dog_place_of_birth">
+          </div>
+          <div class="form-group ahba-other-group" data-target="add-dog" style="grid-column:1/-1; display:none;">
+            <label>Other registry name</label>
+            <input type="text" name="ahba_number_type_other" placeholder="e.g. NEBCA, CKC, ASCA">
           </div>
         </div>
       </fieldset>
@@ -320,6 +353,15 @@
     sel.addEventListener('change', function() {
       var target = document.getElementById(this.dataset.target);
       if (target) target.style.display = this.value === 'Foreign' ? '' : 'none';
+    });
+  });
+
+  // Show/hide AHBA "Other registry name" box when type=Other (add + edit forms).
+  document.querySelectorAll('.ahba-type-select').forEach(function(sel) {
+    sel.addEventListener('change', function() {
+      var key = this.dataset.target;
+      var group = document.querySelector('.ahba-other-group[data-target="' + key + '"]');
+      if (group) group.style.display = this.value === 'Other' ? '' : 'none';
     });
   });
 </script>

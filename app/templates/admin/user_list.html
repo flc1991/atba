@@ -42,13 +42,27 @@
               </form>
               <form method="post" action="/admin/users/{{ u.id }}/toggle-admin"
                     style="display:inline;"
-                    onsubmit="return confirm('Change role for {{ u.name }}?')">
+                    onsubmit='return confirm({{ ("Change role for " ~ u.name ~ "?")|tojson }})'>
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button type="submit" class="btn btn-secondary btn-sm">
                   {{ 'Remove Admin' if u.role == 'admin' else 'Make Admin' }}
                 </button>
               </form>
+              <form method="post" action="/admin/users/{{ u.id }}/toggle-active"
+                    style="display:inline;"
+                    onsubmit='return confirm({{ (("Deactivate " if u.is_active else "Reactivate ") ~ u.name ~ "?")|tojson }})'>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn btn-secondary btn-sm">
+                  {{ 'Reactivate' if not u.is_active else 'Deactivate' }}
+                </button>
+              </form>
             {% endif %}
+            <form method="post" action="/admin/users/{{ u.id }}/delete"
+                  style="display:inline;"
+                  onsubmit='return confirm({{ ("Delete " ~ u.name ~ "? Their saved dogs will be removed. Trial entries, registrations, and member records will be preserved but unlinked from this user. This cannot be undone.")|tojson }})'>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+            </form>
           </td>
         </tr>
       {% endfor %}

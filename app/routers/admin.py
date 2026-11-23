@@ -496,12 +496,32 @@ def export_trial_xlsx(
 ):
     """Export a trial weekend's AKC + AHBA entries to a multi-sheet xlsx workbook."""
     import io
+    import re
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
 
     event = _get_event(event_id, db)
     if event.event_type != "trial":
         raise HTTPException(status_code=400, detail="Excel export is only for trial events.")
+
+    # Strip a leading stock count from AHBA event names
+    # ("4-5 Geese HTD" -> "Geese HTD", "5 Ducks HTD" -> "Ducks HTD").
+    # AKC names ("Course A", "JHD") don't start with digits so are left alone.
+    _stock_count_re = re.compile(r"^\s*\d+(?:[-–]\d+)?\+?\s+")
+    def _strip_stock_count(name: str) -> str:
+        return _stock_count_re.sub("", name or "")
+
+    def _akc_type_label(t: TrialEntry) -> str:
+        if not t.akc_number_type:
+            return ""
+        if t.akc_number_type == "PAL_ILP":
+            return "PAL/ILP"
+        if t.akc_number_type == "Foreign":
+            return f"Foreign ({t.akc_foreign_country})" if t.akc_foreign_country else "Foreign"
+        return t.akc_number_type
+
+    def _reg_type(t: TrialEntry) -> str:
+        return _akc_type_label(t) if t.governing_body == "AKC" else (t.ahba_number_type or "")
 
     trials_by_body = {
         t.governing_body: t
@@ -515,75 +535,137 @@ def export_trial_xlsx(
     )
 
     wb = Workbook()
+    # We build AKC + AHBA into their own tabs, then drop the default sheet.
+    wb.remove(wb.active)
 
-    # ---- Sheet 1: Entry Data (one row per selection) ----
-    ws = wb.active
-    ws.title = "Entry Data"
-    header = [
-        "Body", "Handler", "Dog", "Breed", "Sex", "Reg #",
-        "Event (class/test)", "Class", "Trial", "Day pref",
-        "Call #", "Email", "Phone", "Paid", "Payment ref",
+    # Universal owner/contact/dog columns + values (same for both bodies).
+    common_header = [
+        "Owner Name", "Email", "Phone",
+        "Address 1", "Address 2", "City", "State/Prov", "Postal", "Country",
+        "Dog", "Call name", "Breed", "Sex", "DOB",
+        "Sire", "Dam", "Breeder",
     ]
-    ws.append(header)
-    for cell in ws[1]:
-        cell.font = Font(bold=True)
-        cell.fill = PatternFill(start_color="2C6E2E", end_color="2C6E2E", fill_type="solid")
-        cell.font = Font(bold=True, color="FFFFFF")
-        cell.alignment = Alignment(horizontal="left")
+    def _common_cols(entry: TrialEntry) -> list:
+        return [
+            entry.handler_name,
+            entry.handler_email or "",
+            entry.handler_phone or "",
+            entry.address_line1 or "",
+            entry.address_line2 or "",
+            entry.city or "",
+            entry.state_province or "",
+            entry.postal_code or "",
+            entry.country or "",
+            entry.dog_name,
+            entry.dog_call_name or "",
+            entry.dog_breed or "",
+            entry.dog_sex or "",
+            entry.dog_dob.isoformat() if entry.dog_dob else "",
+            entry.dog_sire or "",
+            entry.dog_dam or "",
+            entry.dog_breeder or "",
+        ]
 
-    for entry in all_entries:
-        body = entry.governing_body
+    # Body-specific extras after the common block, before selection cols.
+    akc_extra_header = [
+        "Reg type", "Reg #",
+        "Handler", "Handler Address", "Separate Entries",
+    ]
+    def _akc_extra_cols(entry: TrialEntry) -> list:
+        return [
+            _reg_type(entry),
+            entry.dog_registration_number or "",
+            entry.akc_handler_name or "",
+            entry.akc_handler_address or "",
+            "Yes" if entry.akc_separate_entries else "",
+        ]
+
+    ahba_extra_header = [
+        "Place of birth",
+        "Reg type", "Reg #",
+        "Agent Name", "Agent Phone", "Agent Email",
+    ]
+    def _ahba_extra_cols(entry: TrialEntry) -> list:
+        return [
+            entry.dog_place_of_birth or "",
+            _reg_type(entry),
+            entry.dog_registration_number or "",
+            entry.ahba_agent_name or "",
+            entry.ahba_agent_phone or "",
+            entry.ahba_agent_email or "",
+        ]
+
+    selection_header = ["Event", "Class", "Trial", "Day pref", "Call #"]
+    tail_header = ["Paid", "Payment ref", "Total fee ($)", "Source"]
+
+    def _entry_tail(entry: TrialEntry) -> list:
+        return [
+            "Yes" if entry.is_paid else "No",
+            entry.payment_reference or entry.paypal_order_id or "",
+            round((entry.total_fee_cents or 0) / 100, 2),
+            "Manual" if entry.is_manual_entry else "Online",
+        ]
+
+    def _trial_label(body: str, sel) -> str:
         trial = trials_by_body.get(body)
-        sels = db.query(TrialEntrySelection).filter_by(trial_entry_id=entry.id).all()
-        if not sels:
-            ws.append([
-                body, entry.handler_name, entry.dog_name, entry.dog_breed or "",
-                entry.dog_sex or "", entry.dog_registration_number or "",
-                "(no selections)", "", "", "", "",
-                entry.handler_email or "", entry.handler_phone or "",
-                "Yes" if entry.is_paid else "No",
-                entry.payment_reference or entry.paypal_order_id or "",
-            ])
-            continue
-        for sel in sels:
-            te = db.get(TrialEvent, sel.trial_event_id)
-            cls = (
-                db.get(TrialEventClass, sel.trial_event_class_id)
-                if sel.trial_event_class_id is not None else None
-            )
-            trial_label = ""
-            if sel.akc_trial_pref == "event_1":
-                if trial and body == "AKC" and trial.akc_event_number:
-                    trial_label = f"Event 1 (#{trial.akc_event_number})"
-                elif trial and body == "AHBA" and trial.ahba_event_1_judge:
-                    trial_label = f"Event 1 ({trial.ahba_event_1_judge})"
-                else:
-                    trial_label = "Event 1"
-            elif sel.akc_trial_pref == "event_2":
-                if trial and body == "AKC" and trial.akc_event_number_2:
-                    trial_label = f"Event 2 (#{trial.akc_event_number_2})"
-                elif trial and body == "AHBA" and trial.ahba_event_2_judge:
-                    trial_label = f"Event 2 ({trial.ahba_event_2_judge})"
-                else:
-                    trial_label = "Event 2"
-            ws.append([
-                body, entry.handler_name, entry.dog_name, entry.dog_breed or "",
-                entry.dog_sex or "", entry.dog_registration_number or "",
-                te.name if te else "", cls.name if cls else ("test" if te and te.is_test_class else ""),
-                trial_label, sel.day_preference or "",
-                sel.call_number or "",
-                entry.handler_email or "", entry.handler_phone or "",
-                "Yes" if entry.is_paid else "No",
-                entry.payment_reference or entry.paypal_order_id or "",
-            ])
-    # Auto-size columns
-    for col in ws.columns:
-        max_len = max((len(str(c.value)) for c in col if c.value), default=10)
-        ws.column_dimensions[col[0].column_letter].width = min(max_len + 2, 40)
+        if sel.akc_trial_pref == "event_1":
+            if trial and body == "AKC" and trial.akc_event_number:
+                return f"Event 1 (#{trial.akc_event_number})"
+            if trial and body == "AHBA" and trial.ahba_event_1_judge:
+                return f"Event 1 ({trial.ahba_event_1_judge})"
+            return "Event 1" if sel.akc_trial_pref else ""
+        if sel.akc_trial_pref == "event_2":
+            if trial and body == "AKC" and trial.akc_event_number_2:
+                return f"Event 2 (#{trial.akc_event_number_2})"
+            if trial and body == "AHBA" and trial.ahba_event_2_judge:
+                return f"Event 2 ({trial.ahba_event_2_judge})"
+            return "Event 2"
+        return ""
+
+    def _write_body_sheet(body: str, sheet_title: str, extra_header, extra_cols_fn):
+        ws = wb.create_sheet(sheet_title)
+        ws.append(common_header + extra_header + selection_header + tail_header)
+        for cell in ws[1]:
+            cell.fill = PatternFill(start_color="2C6E2E", end_color="2C6E2E", fill_type="solid")
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.alignment = Alignment(horizontal="left")
+
+        body_entries = [e for e in all_entries if e.governing_body == body]
+        for entry in body_entries:
+            sels = db.query(TrialEntrySelection).filter_by(trial_entry_id=entry.id).all()
+            base = _common_cols(entry) + extra_cols_fn(entry)
+            if not sels:
+                ws.append(base + ["(no selections)", "", "", "", ""] + _entry_tail(entry))
+                continue
+            for sel in sels:
+                te = db.get(TrialEvent, sel.trial_event_id)
+                cls = (
+                    db.get(TrialEventClass, sel.trial_event_class_id)
+                    if sel.trial_event_class_id is not None else None
+                )
+                ws.append(
+                    base
+                    + [
+                        _strip_stock_count(te.name) if te else "",
+                        cls.name if cls else ("test" if te and te.is_test_class else ""),
+                        _trial_label(body, sel),
+                        sel.day_preference or "",
+                        sel.call_number or "",
+                    ]
+                    + _entry_tail(entry)
+                )
+
+        for col in ws.columns:
+            max_len = max((len(str(c.value)) for c in col if c.value), default=10)
+            ws.column_dimensions[col[0].column_letter].width = min(max_len + 2, 40)
+        ws.freeze_panes = "A2"
+
+    _write_body_sheet("AKC", "AKC Entries", akc_extra_header, _akc_extra_cols)
+    _write_body_sheet("AHBA", "AHBA Entries", ahba_extra_header, _ahba_extra_cols)
 
     # ---- Sheet 2: Payment Summary ----
     pay = wb.create_sheet("Payment Summary")
-    pay.append(["Body", "Handler", "Dog", "Total Fee ($)", "Paid", "Payment Reference"])
+    pay.append(["Body", "Owner Name", "Dog", "Total Fee ($)", "Paid", "Payment Reference"])
     for cell in pay[1]:
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill(start_color="2C6E2E", end_color="2C6E2E", fill_type="solid")
@@ -633,7 +715,7 @@ def export_trial_xlsx(
                 db.get(TrialEventClass, sel.trial_event_class_id)
                 if sel.trial_event_class_id is not None else None
             )
-            te_name = te.name if te else "(unknown)"
+            te_name = _strip_stock_count(te.name) if te else "(unknown)"
             class_name = cls.name if cls else ("test" if te and te.is_test_class else "")
             key = (body, te_name, class_name)
             counts[key] = counts.get(key, 0) + 1
@@ -880,6 +962,7 @@ def _manual_entry_ctx(request: Request, admin: User, db: Session, event_id: int,
             "akc_number_type": d.akc_number_type or "",
             "akc_registration_number": d.akc_registration_number or "",
             "akc_foreign_country": d.akc_foreign_country or "",
+            "ahba_number_type": d.ahba_number_type or "",
             "ahba_registration_number": d.ahba_registration_number or "",
             "dog_place_of_birth": d.dog_place_of_birth or "",
         })
@@ -899,6 +982,14 @@ def _manual_entry_ctx(request: Request, admin: User, db: Session, event_id: int,
         "csrf_token": _csrf(request),
     })
     return ctx, event, trial, trial_events, te_classes_map
+
+
+def _resolve_ahba_number_type(form) -> str | None:
+    """Read ahba_number_type from form; if 'Other', use the custom text box."""
+    raw = (form.get("ahba_number_type") or "").strip()
+    if raw == "Other":
+        return (form.get("ahba_number_type_other") or "").strip() or None
+    return raw or None
 
 
 def _save_manual_entry(
@@ -962,6 +1053,7 @@ def _save_manual_entry(
         akc_handler_name=fget("akc_handler_name") or None,
         akc_handler_address=fget("akc_handler_address") or None,
         akc_separate_entries=bool(form.get("akc_separate_entries")),
+        ahba_number_type=_resolve_ahba_number_type(form),
         ahba_agent_name=fget("ahba_agent_name") or None,
         ahba_agent_phone=fget("ahba_agent_phone") or None,
         ahba_agent_email=fget("ahba_agent_email") or None,
@@ -1523,6 +1615,67 @@ async def toggle_admin(
     return RedirectResponse("/admin/users", status_code=303)
 
 
+@router.post("/users/{user_id}/toggle-active")
+async def toggle_active(
+    user_id: int,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    form = await request.form()
+    _validate_csrf(form.get("csrf_token", ""), request)
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(404)
+    if user.id == admin.id:
+        flash(request, "You cannot deactivate your own account.", "error")
+        return RedirectResponse("/admin/users", status_code=303)
+    user.is_active = not user.is_active
+    db.commit()
+    label = "reactivated" if user.is_active else "deactivated"
+    flash(request, f"{user.name} {label}.", "success")
+    return RedirectResponse("/admin/users", status_code=303)
+
+
+@router.post("/users/{user_id}/delete")
+async def user_delete(
+    user_id: int,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Hard-delete a user. Saved dogs go away (cascade); trial entries,
+    registrations, and member rows are unlinked (SET NULL) so the historical
+    data is preserved. SQLite FK enforcement is off in this app, so we apply
+    those effects explicitly here."""
+    from app.models.dog import Dog
+
+    form = await request.form()
+    _validate_csrf(form.get("csrf_token", ""), request)
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(404)
+    if user.id == admin.id:
+        flash(request, "You cannot delete your own account.", "error")
+        return RedirectResponse("/admin/users", status_code=303)
+
+    name = user.name
+    db.query(Dog).filter_by(user_id=user.id).delete(synchronize_session=False)
+    db.query(TrialEntry).filter_by(user_id=user.id).update(
+        {"user_id": None}, synchronize_session=False
+    )
+    db.query(Registration).filter_by(user_id=user.id).update(
+        {"user_id": None}, synchronize_session=False
+    )
+    db.query(Member).filter_by(user_id=user.id).update(
+        {"user_id": None}, synchronize_session=False
+    )
+    db.delete(user)
+    db.commit()
+    flash(request, f"User {name} deleted.", "success")
+    return RedirectResponse("/admin/users", status_code=303)
+
+
 # ----------------------------------------------------------------
 # Unregistered-user create/edit + per-user dog management
 # ----------------------------------------------------------------
@@ -1666,6 +1819,7 @@ async def user_dog_add(
         dog_dob=dog_dob,
         akc_number_type=_f("akc_number_type"),
         akc_registration_number=_f("akc_registration_number"),
+        ahba_number_type=_resolve_ahba_number_type(form),
         ahba_registration_number=_f("ahba_registration_number"),
     ))
     db.commit()

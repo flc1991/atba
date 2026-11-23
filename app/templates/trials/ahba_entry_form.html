@@ -249,6 +249,7 @@
             data-sire="{{ d.dog_sire or '' }}"
             data-dam="{{ d.dog_dam or '' }}"
             data-breeder="{{ d.dog_breeder or '' }}"
+            data-ahba-type="{{ d.ahba_number_type or '' }}"
             data-ahba-num="{{ d.ahba_registration_number or '' }}"
             data-place-of-birth="{{ d.dog_place_of_birth or '' }}"
           >{{ d.dog_name }}{% if d.dog_breed %} — {{ d.dog_breed }}{% endif %}</option>
@@ -262,13 +263,39 @@
       <input type="text" id="dog_name" name="dog_name" required
              value="{{ form_data.dog_name or '' }}">
     </div>
-    <div class="form-group">
-      <label for="dog_registration_number">
-        Registry type and number <span class="required">*</span>
-        <span class="form-hint">(e.g., "AKC DN12345678" or "AHBA 12345")</span>
-      </label>
-      <input type="text" id="dog_registration_number" name="dog_registration_number"
-             value="{{ form_data.dog_registration_number or '' }}">
+    {% set _ahba_known = ('AKC', 'ABCA', 'ISDS') %}
+    {% set _ahba_saved_type = form_data.get('ahba_number_type') or '' %}
+    {# After a failed submit the type is the literal "Other"; the custom name is in its own field. #}
+    {% set _ahba_other_name = form_data.get('ahba_number_type_other', '') if _ahba_saved_type == 'Other' else _ahba_saved_type %}
+    {% set _ahba_is_other = _ahba_saved_type and _ahba_saved_type not in _ahba_known %}
+    <div class="form-row">
+      <div class="form-group">
+        <label for="ahba_number_type">
+          Registry type <span class="required">*</span>
+        </label>
+        <select id="ahba_number_type" name="ahba_number_type">
+          <option value="">— select —</option>
+          {% for t in _ahba_known %}
+            <option value="{{ t }}" {% if _ahba_saved_type == t %}selected{% endif %}>{{ t }}</option>
+          {% endfor %}
+          <option value="Other" {% if _ahba_is_other %}selected{% endif %}>Other (specify)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="dog_registration_number">
+          Registration number <span class="required">*</span>
+          <span class="form-hint">(letters and numbers, e.g. "PAL301838")</span>
+        </label>
+        <input type="text" id="dog_registration_number" name="dog_registration_number"
+               value="{{ form_data.dog_registration_number or '' }}">
+      </div>
+    </div>
+    <div class="form-group" id="ahba-number-type-other-group"
+         style="{{ '' if _ahba_is_other else 'display:none;' }}">
+      <label for="ahba_number_type_other">Other registry name <span class="required">*</span></label>
+      <input type="text" id="ahba_number_type_other" name="ahba_number_type_other"
+             value="{{ _ahba_other_name if _ahba_is_other else '' }}"
+             placeholder="e.g. NEBCA, CKC, ASCA">
     </div>
     <div class="form-row">
       <div class="form-group">
@@ -424,6 +451,7 @@
       opt.dataset.sire = d.dog_sire;
       opt.dataset.dam = d.dog_dam;
       opt.dataset.breeder = d.dog_breeder;
+      opt.dataset.ahbaType = d.ahba_number_type;
       opt.dataset.ahbaNum = d.ahba_registration_number;
       opt.dataset.placeOfBirth = d.dog_place_of_birth;
       opt.textContent = (d.dog_name || '(unnamed)') + (d.dog_breed ? ' — ' + d.dog_breed : '');
@@ -452,6 +480,39 @@
       setVal('dog_breeder', d.breeder);
       var sexSel = document.getElementById('dog_sex');
       if (sexSel) sexSel.value = d.sex || '';
+      applyAhbaType(d.ahbaType);
+    });
+  }
+
+  // AHBA registry type: select known value, or pick "Other" and fill custom box.
+  var ahbaKnown = ['AKC', 'ABCA', 'ISDS'];
+  function applyAhbaType(savedType) {
+    var typeSel = document.getElementById('ahba_number_type');
+    var otherGroup = document.getElementById('ahba-number-type-other-group');
+    var otherInput = document.getElementById('ahba_number_type_other');
+    if (!typeSel) return;
+    var val = (savedType || '').trim();
+    if (!val) {
+      typeSel.value = '';
+      if (otherInput) otherInput.value = '';
+      if (otherGroup) otherGroup.style.display = 'none';
+      return;
+    }
+    if (ahbaKnown.indexOf(val) !== -1) {
+      typeSel.value = val;
+      if (otherInput) otherInput.value = '';
+      if (otherGroup) otherGroup.style.display = 'none';
+    } else {
+      typeSel.value = 'Other';
+      if (otherInput) otherInput.value = val;
+      if (otherGroup) otherGroup.style.display = '';
+    }
+  }
+  var ahbaTypeSel = document.getElementById('ahba_number_type');
+  if (ahbaTypeSel) {
+    ahbaTypeSel.addEventListener('change', function() {
+      var otherGroup = document.getElementById('ahba-number-type-other-group');
+      if (otherGroup) otherGroup.style.display = (this.value === 'Other') ? '' : 'none';
     });
   }
 

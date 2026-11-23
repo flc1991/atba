@@ -119,6 +119,9 @@ class TrialEntry(Base):
     akc_separate_entries: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     # AHBA-specific fields
+    # Issuing registry for the AHBA registration number (AKC, ABCA, ISDS, or
+    # custom). Mirrors dog.ahba_number_type — see note there.
+    ahba_number_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     ahba_agent_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     ahba_agent_phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
     ahba_agent_email: Mapped[str | None] = mapped_column(String(255), nullable=True)

@@ -16,12 +16,14 @@ def get_db() -> Generator:
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)):
-    """Return the logged-in User ORM object, or None if not authenticated."""
+    """Return the logged-in User ORM object, or None if not authenticated or deactivated."""
     from app.models.user import User  # local import avoids circular deps at startup
 
     user_id = request.session.get("user_id")
     if user_id:
-        return db.get(User, user_id)
+        user = db.get(User, user_id)
+        if user and user.is_active:
+            return user
     return None
 
 
