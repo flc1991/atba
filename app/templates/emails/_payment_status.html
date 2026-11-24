@@ -1,0 +1,12 @@
+{% if status == "awaiting_check" %}
+<p style="background:#fef9e7; padding:0.75rem;">
+  <strong>Your entry is incomplete until your check arrives.</strong><br>
+  Payable to: {{ check.payee }} (trial secretary)<br>
+  Mail to: {{ check.address }}{% if check.deadline %}<br>
+  Must arrive by: {{ check.deadline }}{% endif %}
+</p>
+<p><a href="{{ record_url }}">View your entry</a></p>
+{% elif status == "unpaid" %}
+<p style="background:#fef9e7; padding:0.75rem;"><strong>We have not confirmed a payment for this entry yet.</strong></p>
+<p><a href="{{ record_url }}">View your entry and payment options</a></p>
+{% endif %}

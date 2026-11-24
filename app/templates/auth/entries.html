@@ -13,9 +13,16 @@
   <div style="display:flex; flex-direction:column; gap:0.35rem; align-items:flex-start; min-height:60px;">
     {% if rec.is_paid %}
       <span style="display:inline-block; padding:0.2rem 0.6rem; border-radius:10px; background:#eafaf1; color:#27ae60; font-size:0.85em; font-weight:600; white-space:nowrap;">&#10003; Paid</span>
+    {% elif (kind, rec.id) in processing %}
+      <span style="display:inline-block; padding:0.2rem 0.6rem; border-radius:10px; background:#eaf4fb; color:#1f618d; font-size:0.85em; font-weight:600; white-space:nowrap;">Payment processing</span>
+      <a href="{{ checkout_url(rec) }}" class="btn btn-secondary btn-sm">Check status</a>
+    {% elif (kind, rec.id) in open_checks %}
+      {% set c = open_checks[(kind, rec.id)] %}
+      <span style="display:inline-block; padding:0.2rem 0.6rem; border-radius:10px; background:#fef9e7; color:#7a6500; font-size:0.85em; font-weight:600; white-space:nowrap;">{{ 'Check overdue' if c.overdue else 'Awaiting check' }}</span>
+      <a href="{{ confirmation_url(rec) }}" class="btn btn-secondary btn-sm">Check details</a>
     {% else %}
       <span style="display:inline-block; padding:0.2rem 0.6rem; border-radius:10px; background:#fcecec; color:#c0392b; font-size:0.85em; font-weight:600; white-space:nowrap;">Pending payment</span>
-      <a href="/payments/checkout/{{ kind }}/{{ rec.id }}" class="btn btn-primary btn-sm">Pay Now</a>
+      <a href="{{ checkout_url(rec) }}" class="btn btn-primary btn-sm">Pay Now</a>
     {% endif %}
   </div>
 {%- endmacro %}

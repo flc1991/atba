@@ -41,6 +41,16 @@ def require_admin(current_user=Depends(get_current_user)):
     return current_user
 
 
+def require_secretary(current_user=Depends(get_current_user)):
+    """Raise 403 unless an admin or an active trial secretary."""
+    if current_user is None or not (
+        current_user.role == "admin"
+        or (current_user.is_trial_secretary and current_user.is_active)
+    ):
+        raise HTTPException(status_code=403, detail="Trial secretary access required")
+    return current_user
+
+
 def base_context(request: Request, current_user=Depends(get_current_user)) -> dict:
     """Common template context injected into every route that needs it."""
     return {

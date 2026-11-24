@@ -36,6 +36,11 @@ def compute_ahba_close(ahba_trial_date: date) -> datetime:
     ).astimezone(UTC)
 
 
+def format_et(dt: datetime) -> str:
+    """Display a stored UTC datetime in Eastern time."""
+    return _ensure_utc(dt).astimezone(EASTERN).strftime("%B %d, %Y at %I:%M %p ET")
+
+
 # ---------------------------------------------------------------------------
 # Trial open/closed status
 # ---------------------------------------------------------------------------
@@ -57,6 +62,21 @@ def get_trial_status(reg_close_dt: datetime | None) -> str:
     if reg_close_dt is None:
         return "not_yet_open"
     return "open" if datetime.now(UTC) < _ensure_utc(reg_close_dt) else "closed"
+
+
+# ---------------------------------------------------------------------------
+# Fun Run / Smart Dog Day open/closed status
+# ---------------------------------------------------------------------------
+
+def get_event_status(event) -> str:
+    """
+    Return 'not_yet_open', 'open', or 'closed' for a Fun Run / Smart Dog Day event.
+
+    No late fee means pricing isn't configured yet. Open through the event's last day (ET).
+    """
+    if datetime.now(EASTERN).date() > event.end_date:
+        return "closed"
+    return "not_yet_open" if event.fee_late_cents is None else "open"
 
 
 # ---------------------------------------------------------------------------

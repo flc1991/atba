@@ -1,12 +1,34 @@
 {% extends "base.html" %}
-{% block title %}Entry Confirmed — {{ event.title }}{% endblock %}
+{% block title %}Entry {{ "Confirmed" if entry.is_paid else "Pending" }} — {{ event.title }}{% endblock %}
 
 {% block content %}
 <div style="max-width:640px; margin:2rem auto; text-align:center;">
-  <div style="font-size:3rem; margin-bottom:1rem;">&#10003;</div>
-  <h1>Entry Submitted!</h1>
+  <div style="font-size:3rem; margin-bottom:1rem;">{% if entry.is_paid %}&#10003;{% else %}&#8987;{% endif %}</div>
+  <h1>{% if entry.is_paid %}Entry confirmed!{% else %}Entry received — {{ "awaiting your check" if check else "payment pending" }}{% endif %}</h1>
   <h2>{{ event.title }} — {{ entry.governing_body }} Trial</h2>
   <p style="color:#555; margin-bottom:2rem;">{{ event.start_date.strftime('%B %d, %Y') }}</p>
+
+  {% if not entry.is_paid %}
+  <div style="margin-bottom:2rem;">
+    {% if awaiting_paypal %}
+      <p><strong>PayPal is processing your payment, so please don't pay again.</strong>
+      We'll mark your entry paid once it's confirmed.</p>
+      <a href="{{ checkout_url }}" class="btn btn-secondary">Check payment status</a>
+    {% elif check %}
+      <p><strong>Your entry is incomplete until your check arrives.</strong></p>
+      {% include "payments/_check_instructions.html" %}
+      {% if not not_payable %}
+        <p>Changed your mind? If you have not mailed the check, you can
+        <a href="{{ checkout_url }}">pay with PayPal instead</a>.</p>
+      {% endif %}
+    {% elif not_payable %}
+      <p><strong>{{ not_payable }}</strong></p>
+    {% else %}
+      <p>Your entry is saved but not paid.</p>
+      <a href="{{ checkout_url }}" class="btn btn-primary">Pay Now</a>
+    {% endif %}
+  </div>
+  {% endif %}
 
   <div class="card" style="text-align:left; padding:1.5rem; background:#f9f9f9; border-radius:6px; margin-bottom:2rem;">
     <h3 style="margin-top:0;">Entry Summary</h3>
@@ -51,8 +73,8 @@
         <td style="padding:0.4rem 0;">{{ entry.handler_email }}</td>
       </tr>
       <tr>
-        <td style="padding:0.4rem 0; color:#666;">Total paid</td>
-        <td style="padding:0.4rem 0;"><strong>${{ "%.2f" | format(entry.total_fee_cents / 100) }}</strong></td>
+        <td style="padding:0.4rem 0; color:#666;">{{ "Total paid" if entry.is_paid else "Amount due" }}</td>
+        <td style="padding:0.4rem 0;"><strong>${{ "%.2f" | format(amount_cents / 100) }}</strong></td>
       </tr>
     </table>
 
@@ -92,7 +114,7 @@
   </div>
 
   <p style="color:#555;">
-    A confirmation email will be sent to <strong>{{ entry.handler_email }}</strong>.
+    {% if entry.is_paid %}A confirmation email will be sent to <strong>{{ entry.handler_email }}</strong>.{% endif %}
     Call numbers will be assigned after the entry period closes.
   </p>
 

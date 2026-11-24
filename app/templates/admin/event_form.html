@@ -123,7 +123,7 @@
       </form>
     {% endif %}
     <form method="post" action="/admin/events/{{ event.id }}/send-all-verifications"
-          onsubmit="return confirm('Send verification emails to all unsent entries/registrations?')">
+          onsubmit="return confirm('Email every paid entry/registration that has not had its confirmation yet?')">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <button type="submit" class="btn btn-secondary">Send All Verifications</button>
     </form>

@@ -1,4 +1,5 @@
 {% extends "admin/base.html" %}
+{% from "admin/_payment_macros.html" import payment_actions, check_table, payment_history %}
 {% block title %}Registrations — {{ event.title }} — Admin{% endblock %}
 
 {% block admin_content %}
@@ -41,16 +42,25 @@
         <label><input type="checkbox" name="is_paid" value="1"> Paid</label>
       </div>
     </div>
+    <div class="form-group">
+      <label>Payment reference</label><input type="text" name="payment_reference" maxlength="200" placeholder="e.g. Check #4321 or Cash">
+    </div>
     <button type="submit" class="btn btn-primary">Add Registration</button>
   </form>
 </details>
+
+{% if check_rows %}
+  <h2 style="margin-top:2rem;">Awaiting check</h2>
+  <p>Incomplete until the check arrives. Not included in counts, call numbers or the main export sheets.</p>
+  {{ check_table(check_rows, csrf_token, today, 'event', true) }}
+{% endif %}
 
 {% if registrations %}
   <table>
     <thead>
       <tr>
         <th>#</th><th>Name</th><th>Dog</th><th>Email</th>
-        <th>Tier</th><th>Fee</th><th>Paid</th><th>Verified</th><th></th>
+        <th>Tier</th><th>Fee</th><th>Paid</th><th>Reference</th><th>Verified</th><th></th>
       </tr>
     </thead>
     <tbody>
@@ -63,15 +73,27 @@
           <td>{{ reg.pricing_tier | replace('_',' ') | title }}</td>
           <td>${{ "%.2f" | format(reg.fee_cents / 100) }}</td>
           <td>{{ '✓' if reg.is_paid else '—' }}</td>
+          <td>{{ reg.payment_reference or '—' }}</td>
           <td>{{ '✓' if reg.verification_sent else '—' }}</td>
-          <td style="white-space:nowrap;">
-            <form method="post" action="/admin/registrations/{{ reg.id }}/edit" style="display:inline;">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <input type="hidden" name="name" value="{{ reg.name }}">
-              <input type="hidden" name="email" value="{{ reg.email }}">
-              <input type="hidden" name="dog_name" value="{{ reg.dog_name }}">
-              <input type="hidden" name="is_paid" value="{% if reg.is_paid %}1{% endif %}">
-            </form>
+          <td>
+            {{ payment_actions('registration', reg, reg.fee_cents, csrf_token, today) }}
+            <details style="display:inline-block;">
+              <summary class="btn btn-secondary btn-sm" style="cursor:pointer;">Edit</summary>
+              <form method="post" action="/admin/registrations/{{ reg.id }}/edit" style="padding:0.5rem; max-width:280px;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <label>Name <input type="text" name="name" value="{{ reg.name }}" required></label>
+                <label>Email <input type="email" name="email" value="{{ reg.email }}"></label>
+                <label>Dog <input type="text" name="dog_name" value="{{ reg.dog_name }}" required></label>
+                <label>Payment reference <input type="text" name="payment_reference" maxlength="200" value="{{ reg.payment_reference or '' }}"></label>
+                <button type="submit" class="btn btn-primary btn-sm">Save</button>
+              </form>
+              {{ payment_history(payments[reg.id]) }}
+              <form method="post" action="/admin/registrations/{{ reg.id }}/delete"
+                    onsubmit='return confirm({{ ("Delete the registration for " ~ reg.name ~ "?")|tojson }})'>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+              </form>
+            </details>
             <form method="post" action="/admin/registrations/{{ reg.id }}/send-verification"
                   style="display:inline;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

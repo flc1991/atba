@@ -120,7 +120,13 @@
       <p>Pre-entry closes: <strong>{{ event.pre_entry_close_dt.strftime('%B %d, %Y at %I:%M %p') }} ET</strong></p>
     {% endif %}
 
-    <a href="/events/{{ event.id }}/register/{{ route }}" class="btn btn-primary" style="margin-top:1rem;">Register</a>
+    {% if event_status == 'open' %}
+      <a href="/events/{{ event.id }}/register/{{ route }}" class="btn btn-primary" style="margin-top:1rem;">Register</a>
+    {% elif event_status == 'not_yet_open' %}
+      <p>Registration is not yet open.</p>
+    {% else %}
+      <p>Registration is closed.</p>
+    {% endif %}
   </section>
 {% endif %}
 {% endblock %}

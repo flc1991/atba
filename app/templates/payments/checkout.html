@@ -1,49 +1,51 @@
 {% extends "base.html" %}
-{% block title %}Continue to PayPal — {{ event.title }}{% endblock %}
+{% block title %}Payment — {{ event.title }}{% endblock %}
 
 {% block content %}
 <div style="max-width:520px; margin:2rem auto;">
   <h1>Almost there!</h1>
-  <p>Your registration has been recorded. Click the button below to complete payment via PayPal.</p>
+  <p>Your entry has been saved. Choose how to pay.</p>
+
+  {% if price_changed %}
+  <p class="flash flash-info">Pre-entry pricing has ended, so the late rate now applies. Please check the amount below.</p>
+  {% endif %}
+  {% if open_check %}
+  <p class="flash flash-info">We're expecting a check for this entry. Pay with PayPal only if you have not mailed it.</p>
+  {% endif %}
 
   <div style="background:#f9f9f9; padding:1rem 1.25rem; border-radius:6px; border:1px solid #ddd; margin:1.5rem 0;">
     <div><strong>Event:</strong> {{ event.title }}</div>
     <div><strong>Item:</strong> {{ item_name }}</div>
-    <div><strong>Amount due:</strong> ${{ amount_dollars }}</div>
+    <div><strong>Entry cost:</strong> ${{ "%.2f" | format(amount_cents / 100) }}</div>
   </div>
 
-  <form id="paypal-redirect-form" action="{{ paypal_url }}" method="post">
-    <input type="hidden" name="cmd" value="_xclick">
-    <input type="hidden" name="business" value="{{ business_email }}">
-    <input type="hidden" name="item_name" value="{{ item_name }}">
-    <input type="hidden" name="item_number" value="{{ item_number }}">
-    <input type="hidden" name="amount" value="{{ amount_dollars }}">
-    <input type="hidden" name="currency_code" value="USD">
-    <input type="hidden" name="no_shipping" value="1">
-    <input type="hidden" name="return" value="{{ return_url }}">
-    <input type="hidden" name="cancel_return" value="{{ cancel_url }}">
-    {% if notify_url %}<input type="hidden" name="notify_url" value="{{ notify_url }}">{% endif %}
-    <input type="hidden" name="rm" value="1">  {# return method: GET, no payer data #}
-
-    <button type="submit" class="btn btn-primary" style="font-size:1.1em; padding:0.65rem 1.5rem;">
-      Continue to PayPal
-    </button>
-    <a href="/events/{{ event.id }}" class="btn btn-secondary" style="margin-left:0.5rem;">Cancel</a>
+  {% if paypal_enabled %}
+  <h2>Pay with PayPal</h2>
+  <table style="max-width:320px;">
+    <tr><td>Entry</td><td>${{ "%.2f" | format(amount_cents / 100) }}</td></tr>
+    <tr><td>Processing fee</td><td>${{ "%.2f" | format(processing_fee_cents / 100) }}</td></tr>
+    <tr><td><strong>PayPal total</strong></td><td><strong>${{ "%.2f" | format(total_cents / 100) }}</strong></td></tr>
+  </table>
+  <form method="post" action="/payments/paypal/{{ kind }}/{{ record.id }}" style="margin-top:1rem;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="t" value="{{ token }}">
+    <input type="hidden" name="total" value="{{ total_cents }}">
+    <button type="submit" class="btn btn-primary">Continue to PayPal</button>
   </form>
+  {% endif %}
 
-  <p style="margin-top:1.5rem; color:#666; font-size:0.9em;">
-    You'll be taken to PayPal's secure checkout to complete your payment. After paying you'll be
-    returned to this site to see your confirmation.
-  </p>
+  {% if can_check %}
+  <h2 style="margin-top:2rem;">Send a check</h2>
+  <p>No processing fee.</p>
+  <p>Your entry will be <strong>incomplete until your check arrives</strong>.</p>
+  {% include "payments/_check_instructions.html" %}
+  <form method="post" action="/payments/check/{{ kind }}/{{ record.id }}" style="margin-top:1rem;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="t" value="{{ token }}">
+    <button type="submit" class="btn btn-secondary">I'm sending a check</button>
+  </form>
+  {% endif %}
+
+  <p style="margin-top:1.5rem;"><a href="{{ confirmation_url }}">Not now</a></p>
 </div>
-
-<script>
-  // Auto-submit so the user lands on PayPal as soon as the page renders.
-  // (Use a small delay so the user sees what's happening; if they go back,
-  // the visible button still lets them re-submit.)
-  setTimeout(function() {
-    var form = document.getElementById('paypal-redirect-form');
-    if (form) form.submit();
-  }, 1500);
-</script>
 {% endblock %}

@@ -3,7 +3,7 @@
 <head><meta charset="utf-8"><title>AKC Trial Entry Confirmation</title></head>
 <body style="font-family:Arial,sans-serif; max-width:600px; margin:0 auto; color:#333;">
   <div style="background:#1a5c2a; color:#fff; padding:1.5rem 2rem;">
-    <h1 style="margin:0; font-size:1.4rem;">AKC Trial Entry Confirmed</h1>
+    <h1 style="margin:0; font-size:1.4rem;">AKC Trial Entry {{ "Confirmed" if status == "paid" else "Received" }}</h1>
     <p style="margin:0.25rem 0 0; opacity:0.85;">{{ event.title }}</p>
   </div>
 
@@ -11,7 +11,7 @@
     <p>Dear {{ entry.handler_name }},</p>
     <p>
       Your entry for the <strong>{{ event.title }}</strong> AKC Herding Trial
-      ({{ event.start_date.strftime('%B %d, %Y') }}) has been received and payment confirmed.
+      ({{ event.start_date.strftime('%B %d, %Y') }}) has been received{% if status == "paid" %} and payment confirmed{% endif %}.
     </p>
 
     <table style="width:100%; border-collapse:collapse; margin:1rem 0;">
@@ -30,10 +30,12 @@
         <td style="padding:0.5rem;">{{ entry.handler_name }}</td>
       </tr>
       <tr>
-        <td style="padding:0.5rem; font-weight:bold;">Total Paid</td>
-        <td style="padding:0.5rem;">${{ "%.2f" | format(entry.total_fee_cents / 100) }}</td>
+        <td style="padding:0.5rem; font-weight:bold;">{{ "Total Paid" if status == "paid" else "Amount Due" }}</td>
+        <td style="padding:0.5rem;">${{ "%.2f" | format(amount_cents / 100) }}</td>
       </tr>
     </table>
+
+    {% include "emails/_payment_status.html" %}
 
     <h3 style="color:#1a5c2a;">AKC Class Entries</h3>
     <table style="width:100%; border-collapse:collapse;">

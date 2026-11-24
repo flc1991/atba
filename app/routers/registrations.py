@@ -9,14 +9,22 @@ from sqlalchemy.orm import Session
 
 from app.utils.account_linking import find_user_by_email
 
-from app.config import settings
 from app.dependencies import base_context, get_db
 from app.models.event import Event
 from app.models.member import Member
 from app.models.registration import FUN_RUN_EVENTS, Registration, RegistrationDog
 from app.utils.countries import get_country_choices
 from app.utils.flash import flash
-from app.utils.registration_windows import resolve_pricing_tier
+from app.utils.payment_checks import (
+    can_access,
+    checkout_url,
+    not_payable_reason,
+    open_check,
+    resolve_event_fee,
+)
+from app.utils.payment_records import check_info, paid_amount_cents
+from app.utils.paypal_payments import active_payment
+from app.utils.registration_windows import get_event_status, resolve_pricing_tier
 
 router = APIRouter(tags=["registrations"])
 templates = Jinja2Templates(directory="app/templates")
@@ -33,6 +41,16 @@ def _get_open_event(event_id: int, expected_type: str, db: Session) -> Event:
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     return event
+
+
+def _closed_redirect(request: Request, event: Event) -> RedirectResponse | None:
+    """Redirect back to the event page if registration isn't open, else None."""
+    status = get_event_status(event)
+    if status == "open":
+        return None
+    msg = "is not yet open" if status == "not_yet_open" else "is closed"
+    flash(request, f"Registration for this event {msg}.", "info")
+    return RedirectResponse(f"/events/{event.id}", status_code=303)
 
 
 def _is_current_member(user, is_member_claim: bool, db: Session) -> bool:
@@ -101,12 +119,7 @@ def _reg_context(
     is_member = _is_current_member(current_user, False, db) if current_user else False
     tier = resolve_pricing_tier(event.pre_entry_close_dt, is_member)
 
-    fee_map = {
-        "pre_member": event.fee_pre_member_cents,
-        "pre_general": event.fee_pre_general_cents,
-        "late": event.fee_late_cents,
-    }
-    fee_cents = fee_map.get(tier) or event.fee_late_cents or 0
+    fee_cents = resolve_event_fee(event, tier)
 
     # Auto-fill from logged-in user
     if form_data is None and current_user:
@@ -129,7 +142,6 @@ def _reg_context(
         "form_data": form_data or {},
         "countries": get_country_choices(),
         "csrf_token": _csrf(request),
-        "paypal_client_id": settings.PAYPAL_CLIENT_ID,
     })
     return ctx
 
@@ -146,6 +158,8 @@ def fun_run_get(
     db: Session = Depends(get_db),
 ):
     event = _get_open_event(event_id, "fun_run", db)
+    if closed := _closed_redirect(request, event):
+        return closed
     ctx = _reg_context(request, event, ctx, db)
     ctx["fun_run_events"] = FUN_RUN_EVENTS
     return templates.TemplateResponse(request, "registrations/fun_run.html", ctx)
@@ -163,6 +177,8 @@ async def fun_run_post(
     form = await request.form()
     _validate_csrf(form.get("csrf_token", ""), request)
     event = _get_open_event(event_id, "fun_run", db)
+    if closed := _closed_redirect(request, event):
+        return closed
     current_user = ctx.get("current_user")
 
     # Contact fields
@@ -206,11 +222,7 @@ async def fun_run_post(
     # Server-side pricing re-evaluation
     is_member = _is_current_member(current_user, is_member_claim, db)
     tier = resolve_pricing_tier(event.pre_entry_close_dt, is_member)
-    per_event_fee = {
-        "pre_member": event.fee_pre_member_cents,
-        "pre_general": event.fee_pre_general_cents,
-        "late": event.fee_late_cents,
-    }.get(tier) or event.fee_late_cents or 0
+    per_event_fee = resolve_event_fee(event, tier)
 
     total_events = sum(
         sum(1 for e in [d["event_1"], d["event_2"], d["event_3"], d["event_4"]] if e)
@@ -299,7 +311,7 @@ async def fun_run_post(
     db.refresh(reg)
 
     return RedirectResponse(
-        f"/payments/checkout/registration/{reg.id}",
+        checkout_url(reg),
         status_code=303,
     )
 
@@ -316,6 +328,8 @@ def smart_dog_day_get(
     db: Session = Depends(get_db),
 ):
     event = _get_open_event(event_id, "smart_dog_day", db)
+    if closed := _closed_redirect(request, event):
+        return closed
     return templates.TemplateResponse(
         request, "registrations/smart_dog_day.html", _reg_context(request, event, ctx, db)
     )
@@ -342,6 +356,8 @@ def smart_dog_day_post(
 ):
     _validate_csrf(csrf_token, request)
     event = _get_open_event(event_id, "smart_dog_day", db)
+    if closed := _closed_redirect(request, event):
+        return closed
     return _process_registration(
         request, event, ctx, db,
         name=name, email=email, phone=phone,
@@ -362,6 +378,7 @@ def registration_confirmation(
     event_id: int,
     registration_id: int,
     request: Request,
+    t: str = "",
     ctx: dict = Depends(base_context),
     db: Session = Depends(get_db),
 ):
@@ -370,11 +387,21 @@ def registration_confirmation(
         raise HTTPException(status_code=404, detail="Event not found")
 
     reg = db.query(Registration).filter_by(id=registration_id, event_id=event_id).first()
-    if not reg:
+    if not reg or not can_access(reg, ctx.get("current_user"), t):
         raise HTTPException(status_code=404, detail="Registration not found")
 
     reg_dogs = db.query(RegistrationDog).filter_by(registration_id=reg.id).all()
-    ctx.update({"event": event, "registration": reg, "registration_dogs": reg_dogs})
+    payment = None if reg.is_paid else open_check(db, reg)
+    ctx.update({
+        "event": event,
+        "registration": reg,
+        "registration_dogs": reg_dogs,
+        "awaiting_paypal": not reg.is_paid and active_payment(db, reg) is not None,
+        "amount_cents": paid_amount_cents(db, reg),
+        "not_payable": None if reg.is_paid else not_payable_reason(reg, event, db),
+        "checkout_url": checkout_url(reg),
+        "check": check_info(db, reg, event, payment) if payment else None,
+    })
     return templates.TemplateResponse(request, "registrations/confirmation.html", ctx)
 
 
@@ -414,12 +441,7 @@ def _process_registration(
     is_member = _is_current_member(current_user, is_member_claim, db)
     tier = resolve_pricing_tier(event.pre_entry_close_dt, is_member)
 
-    fee_map = {
-        "pre_member": event.fee_pre_member_cents,
-        "pre_general": event.fee_pre_general_cents,
-        "late": event.fee_late_cents,
-    }
-    fee_cents = fee_map.get(tier) or event.fee_late_cents or 0
+    fee_cents = resolve_event_fee(event, tier)
 
     # Basic field validation
     errors = []
@@ -487,6 +509,6 @@ def _process_registration(
     db.refresh(reg)
 
     return RedirectResponse(
-        f"/payments/checkout/registration/{reg.id}",
+        checkout_url(reg),
         status_code=303,
     )

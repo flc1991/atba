@@ -1,4 +1,5 @@
 {% extends "admin/base.html" %}
+{% from "admin/_payment_macros.html" import payment_actions, check_table, payment_history %}
 {% block title %}Trial Entries — {{ event.title }} — Admin{% endblock %}
 
 {% block admin_content %}
@@ -36,14 +37,7 @@
       </div>
       <div style="display:flex; gap:0.35rem; flex-wrap:wrap;">
         <a href="/admin/trial-entries/{{ entry.id }}" class="btn btn-secondary btn-sm">Edit</a>
-        <form method="post" action="/admin/trial-entries/{{ entry.id }}/toggle-paid" style="display:inline;">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          {% if entry.is_paid %}
-            <button type="submit" class="btn btn-secondary btn-sm">Mark unpaid</button>
-          {% else %}
-            <button type="submit" class="btn btn-sm" style="background:#27ae60; color:#fff;">Mark paid</button>
-          {% endif %}
-        </form>
+        {{ payment_actions('entry', entry, entry.total_fee_cents, csrf_token, today) }}
         <form method="post" action="/admin/trial-entries/{{ entry.id }}/send-verification" style="display:inline;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <button type="submit" class="btn btn-secondary btn-sm" {% if entry.verification_sent %}title="Already sent"{% endif %}>
@@ -101,6 +95,12 @@
     </div>
   </div>
 {%- endmacro %}
+
+{% if check_rows %}
+  <h2 style="margin-top:2rem;">Awaiting check</h2>
+  <p>Incomplete until the check arrives. Not included in counts, call numbers or the main export sheets.</p>
+  {{ check_table(check_rows, csrf_token, today, 'event', true) }}
+{% endif %}
 
 {% for body in ("AKC", "AHBA") %}
   {% set sec = sections[body] %}

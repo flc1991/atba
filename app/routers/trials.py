@@ -6,14 +6,16 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.dependencies import base_context, get_db
 from app.models.dog import Dog
 from app.models.event import Event
 from app.models.trial import Trial, TrialEntry, TrialEntrySelection, TrialEvent, TrialEventClass
 from app.utils.countries import get_country_choices
 from app.utils.account_linking import find_user_by_email
-from app.utils.flash import flash
+from app.utils.flash import flash, get_flash_messages
+from app.utils.payment_checks import can_access, checkout_url, not_payable_reason, open_check
+from app.utils.payment_records import check_info, paid_amount_cents
+from app.utils.paypal_payments import active_payment
 from app.utils.registration_windows import get_trial_status
 from app.utils.registry import resolve_ahba_number_type
 
@@ -198,7 +200,6 @@ def akc_entry_get(
         "saved_dogs": _get_saved_dogs(current_user, db),
         "countries": get_country_choices(),
         "csrf_token": _csrf(request),
-        "paypal_client_id": settings.PAYPAL_CLIENT_ID,
     })
     return templates.TemplateResponse(request, "trials/akc_entry_form.html", ctx)
 
@@ -321,7 +322,8 @@ async def akc_entry_post(
             "saved_dogs": _get_saved_dogs(current_user, db),
             "countries": get_country_choices(),
             "csrf_token": _csrf(request),
-            "paypal_client_id": settings.PAYPAL_CLIENT_ID,
+            # Render the errors here rather than leaking them to the next page.
+            "flash_messages": get_flash_messages(request),
         })
         return templates.TemplateResponse(
             request, "trials/akc_entry_form.html", ctx, status_code=422
@@ -424,7 +426,7 @@ async def akc_entry_post(
         db.commit()
 
     return RedirectResponse(
-        f"/payments/checkout/entry/{entry.id}",
+        checkout_url(entry),
         status_code=303,
     )
 
@@ -461,7 +463,6 @@ def ahba_entry_get(
         "saved_dogs": _get_saved_dogs(current_user, db),
         "countries": get_country_choices(),
         "csrf_token": _csrf(request),
-        "paypal_client_id": settings.PAYPAL_CLIENT_ID,
     })
     return templates.TemplateResponse(request, "trials/ahba_entry_form.html", ctx)
 
@@ -565,7 +566,8 @@ async def ahba_entry_post(
             "saved_dogs": _get_saved_dogs(current_user, db),
             "countries": get_country_choices(),
             "csrf_token": _csrf(request),
-            "paypal_client_id": settings.PAYPAL_CLIENT_ID,
+            # Render the errors here rather than leaking them to the next page.
+            "flash_messages": get_flash_messages(request),
         })
         return templates.TemplateResponse(
             request, "trials/ahba_entry_form.html", ctx, status_code=422
@@ -660,7 +662,7 @@ async def ahba_entry_post(
         db.commit()
 
     return RedirectResponse(
-        f"/payments/checkout/entry/{entry.id}",
+        checkout_url(entry),
         status_code=303,
     )
 
@@ -674,6 +676,7 @@ def trial_entry_confirmation(
     event_id: int,
     entry_id: int,
     request: Request,
+    t: str = "",
     ctx: dict = Depends(base_context),
     db: Session = Depends(get_db),
 ):
@@ -682,7 +685,7 @@ def trial_entry_confirmation(
         raise HTTPException(status_code=404, detail="Event not found")
 
     entry = db.query(TrialEntry).filter_by(id=entry_id, event_id=event_id).first()
-    if not entry:
+    if not entry or not can_access(entry, ctx.get("current_user"), t):
         raise HTTPException(status_code=404, detail="Entry not found")
 
     selections = db.query(TrialEntrySelection).filter_by(trial_entry_id=entry_id).all()
@@ -698,10 +701,16 @@ def trial_entry_confirmation(
             "call_number": sel.call_number,
         })
 
+    payment = None if entry.is_paid else open_check(db, entry)
     ctx.update({
         "event": event,
         "entry": entry,
         "selection_details": selection_details,
+        "awaiting_paypal": not entry.is_paid and active_payment(db, entry) is not None,
+        "amount_cents": paid_amount_cents(db, entry),
+        "not_payable": None if entry.is_paid else not_payable_reason(entry, event, db),
+        "checkout_url": checkout_url(entry),
+        "check": check_info(db, entry, event, payment) if payment else None,
     })
     return templates.TemplateResponse(request, "trials/confirmation.html", ctx)
 

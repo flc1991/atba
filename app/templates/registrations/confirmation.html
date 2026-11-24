@@ -1,12 +1,34 @@
 {% extends "base.html" %}
-{% block title %}Registration Confirmed — {{ event.title }}{% endblock %}
+{% block title %}Registration {{ "Confirmed" if registration.is_paid else "Pending" }} — {{ event.title }}{% endblock %}
 
 {% block content %}
 <div style="max-width:600px; margin:2rem auto; text-align:center;">
-  <div style="font-size:3rem; margin-bottom:1rem;">&#10003;</div>
-  <h1>You're registered!</h1>
+  <div style="font-size:3rem; margin-bottom:1rem;">{% if registration.is_paid %}&#10003;{% else %}&#8987;{% endif %}</div>
+  <h1>{% if registration.is_paid %}You're registered!{% else %}Registration received — {{ "awaiting your check" if check else "payment pending" }}{% endif %}</h1>
   <h2>{{ event.title }}</h2>
   <p style="color:#555; margin-bottom:2rem;">{{ event.start_date.strftime('%B %d, %Y') }}</p>
+
+  {% if not registration.is_paid %}
+  <div style="margin-bottom:2rem;">
+    {% if awaiting_paypal %}
+      <p><strong>PayPal is processing your payment, so please don't pay again.</strong>
+      We'll mark your entry paid once it's confirmed.</p>
+      <a href="{{ checkout_url }}" class="btn btn-secondary">Check payment status</a>
+    {% elif check %}
+      <p><strong>Your entry is incomplete until your check arrives.</strong></p>
+      {% include "payments/_check_instructions.html" %}
+      {% if not not_payable %}
+        <p>Changed your mind? If you have not mailed the check, you can
+        <a href="{{ checkout_url }}">pay with PayPal instead</a>.</p>
+      {% endif %}
+    {% elif not_payable %}
+      <p><strong>{{ not_payable }}</strong></p>
+    {% else %}
+      <p>Your entry is saved but not paid.</p>
+      <a href="{{ checkout_url }}" class="btn btn-primary">Pay Now</a>
+    {% endif %}
+  </div>
+  {% endif %}
 
   <div class="card" style="text-align:left; padding:1.5rem; background:#f9f9f9; border-radius:6px; margin-bottom:2rem;">
     <h3 style="margin-top:0;">Registration Summary</h3>
@@ -47,13 +69,13 @@
         <td style="padding:0.4rem 0;">{{ registration.pricing_tier | replace('_', ' ') | title }}</td>
       </tr>
       <tr>
-        <td style="padding:0.4rem 0; color:#666;">Amount paid</td>
-        <td style="padding:0.4rem 0;"><strong>${{ "%.2f" | format(registration.fee_cents / 100) }}</strong></td>
+        <td style="padding:0.4rem 0; color:#666;">{{ "Amount paid" if registration.is_paid else "Amount due" }}</td>
+        <td style="padding:0.4rem 0;"><strong>${{ "%.2f" | format(amount_cents / 100) }}</strong></td>
       </tr>
     </table>
   </div>
 
-  <p style="color:#555;">A confirmation email will be sent to <strong>{{ registration.email }}</strong>.</p>
+  {% if registration.is_paid %}<p style="color:#555;">A confirmation email will be sent to <strong>{{ registration.email }}</strong>.</p>{% endif %}
 
   <div style="margin-top:2rem;">
     <a href="/events" class="btn btn-secondary">Back to Events</a>

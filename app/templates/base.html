@@ -28,6 +28,8 @@
               <li><a href="/auth/entries">My Entries</a></li>
               {% if current_user.role == 'admin' %}
                 <li><a href="/admin">Admin Panel</a></li>
+              {% elif current_user.is_trial_secretary %}
+                <li><a href="/admin/checks">Checks</a></li>
               {% endif %}
             </ul>
           </li>

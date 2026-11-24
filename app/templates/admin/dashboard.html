@@ -4,6 +4,29 @@
 {% block admin_content %}
 <h1>Admin Dashboard</h1>
 
+{% if reviews %}
+<h2 style="color:#c0392b;">Payments needing review</h2>
+<p>Check these in PayPal and fix the entry if needed. Nothing here changes an entry's paid status.</p>
+<table>
+  <thead><tr><th>Entry</th><th>Amount</th><th>PayPal capture</th><th>What happened</th><th></th></tr></thead>
+  <tbody>
+    {% for r in reviews %}
+    <tr>
+      <td>{% if not r.record %}Deleted {{ r.payment.kind }}
+        {% elif r.payment.kind == 'entry' %}<a href="/admin/trial-entries/{{ r.record.id }}">{{ r.record.handler_name }} / {{ r.record.dog_name }}</a>
+        {% else %}<a href="/admin/events/{{ r.record.event_id }}/registrations">{{ r.record.name }} / {{ r.record.dog_name }}</a>{% endif %}</td>
+      <td>${{ "%.2f" | format(r.payment.total_cents / 100) }}</td>
+      <td>{{ r.payment.paypal_capture_id or '—' }}</td>
+      <td>{{ r.payment.note or '' }}</td>
+      <td><form method="post" action="/admin/payment-reviews/{{ r.payment.id }}/done">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-secondary btn-sm">Reviewed</button></form></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
 <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:1rem; margin-bottom:2rem;">
   <div style="background:#eafaf1; border-left:4px solid #2ecc71; padding:1rem; border-radius:4px;">
     <div style="font-size:2rem; font-weight:bold;">{{ total_entries }}</div>

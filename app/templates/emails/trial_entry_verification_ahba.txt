@@ -1,15 +1,16 @@
-AHBA TRIAL ENTRY CONFIRMED
+AHBA TRIAL ENTRY {{ "CONFIRMED" if status == "paid" else "RECEIVED" }}
 {{ event.title }}
 
 Dear {{ entry.handler_name }},
 
-Your AHBA trial entry has been received and payment confirmed.
+Your AHBA trial entry has been received{% if status == "paid" %} and payment confirmed{% endif %}.
 
 Dog: {{ entry.dog_name }}{% if entry.dog_breed %} ({{ entry.dog_breed }}){% endif %}
 
 {% if entry.dog_registration_number %}Registration Number: {% if entry.ahba_number_type %}{{ entry.ahba_number_type }} {% endif %}{{ entry.dog_registration_number }}
 {% endif %}Handler: {{ entry.handler_name }}
-Total Paid: ${{ "%.2f" | format(entry.total_fee_cents / 100) }}
+{{ "Total Paid" if status == "paid" else "Amount Due" }}: ${{ "%.2f" | format(amount_cents / 100) }}
+{% include "emails/_payment_status.txt" %}
 
 AHBA CLASS ENTRIES:
 {% for sel in selections %}

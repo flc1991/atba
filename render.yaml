@@ -20,7 +20,7 @@ services:
         value: https://atba-herding.onrender.com
       - key: DATABASE_URL
         value: sqlite:////data/atba.db
-      - key: PAYPAL_BUSINESS_EMAIL
+      - key: PAYPAL_WEBHOOK_ID
         sync: false
       - key: PAYPAL_CLIENT_ID
         sync: false
@@ -28,6 +28,10 @@ services:
         sync: false
       - key: PAYPAL_MODE
         value: sandbox
+      - key: CHECK_PAYEE_NAME
+        sync: false
+      - key: CHECK_MAILING_ADDRESS
+        sync: false
       - key: MAIL_USERNAME
         sync: false
       - key: MAIL_PASSWORD

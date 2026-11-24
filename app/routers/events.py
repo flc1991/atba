@@ -10,7 +10,7 @@ from app.dependencies import base_context, get_db
 from app.models.event import Event
 from app.models.event_pdf import EventPdf
 from app.models.trial import Trial, TrialEvent, TrialEventClass
-from app.utils.registration_windows import get_trial_status
+from app.utils.registration_windows import get_event_status, get_trial_status
 
 router = APIRouter(tags=["events"])
 templates = Jinja2Templates(directory="app/templates")
@@ -49,6 +49,8 @@ def event_detail(
         raise HTTPException(status_code=404, detail="Event not found")
 
     ctx["event"] = event
+    if event.event_type in ("fun_run", "smart_dog_day"):
+        ctx["event_status"] = get_event_status(event)
 
     if event.event_type == "trial":
         # AKC sorts before AHBA (descending alpha) since AKC runs first in a trial weekend.
