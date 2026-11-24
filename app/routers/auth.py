@@ -448,6 +448,9 @@ def entries_page(
     from app.models.trial import TrialEntry, TrialEntrySelection, TrialEvent, TrialEventClass, Trial
     from app.models.event import Event
     from app.models.registration import Registration, RegistrationDog
+    from app.utils.payment_checks import checkout_url, confirmation_url
+    from app.utils.payment_records import awaiting_checks, check_info
+    from app.utils.paypal_payments import active_payment
 
     today = date.today()
     cutoff_past = today - timedelta(days=7)
@@ -522,7 +525,23 @@ def entries_page(
         else:
             registrations_past.append(bucket)
 
+    open_checks, processing = {}, set()
+    for kind, buckets in (
+        ("entry", trial_entries_upcoming + trial_entries_past),
+        ("registration", registrations_upcoming + registrations_past),
+    ):
+        pending = awaiting_checks(db, kind)
+        for rec, event, _ in buckets:
+            if not rec.is_paid and active_payment(db, rec):
+                processing.add((kind, rec.id))
+            if rec.id in pending:
+                open_checks[(kind, rec.id)] = check_info(db, rec, event, pending[rec.id])
+
     ctx.update({
+        "open_checks": open_checks,
+        "processing": processing,
+        "checkout_url": checkout_url,
+        "confirmation_url": confirmation_url,
         "trial_entries_upcoming": trial_entries_upcoming,
         "trial_entries_past": trial_entries_past,
         "registrations_upcoming": registrations_upcoming,

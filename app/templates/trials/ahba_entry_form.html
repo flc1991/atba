@@ -375,7 +375,7 @@
     {% endif %}
 
     <button type="submit" id="submit-btn" class="btn btn-primary" style="margin-top:1rem; font-size:1.05em;">
-      {% if admin_mode %}Save Entry{% else %}Continue to PayPal{% endif %}
+      {% if admin_mode %}Save Entry{% else %}Continue to payment{% endif %}
     </button>
     {% if admin_mode %}
       <a href="/admin/events/{{ event.id }}/trial-entries" class="btn btn-secondary" style="margin-left:0.5rem;">Cancel</a>

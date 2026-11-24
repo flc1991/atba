@@ -1,4 +1,5 @@
 {% extends "admin/base.html" %}
+{% from "admin/_payment_macros.html" import payment_actions, check_table, payment_history %}
 {% block title %}Entry #{{ entry.id }} — Admin{% endblock %}
 
 {% block admin_content %}
@@ -58,9 +59,6 @@
         <input type="text" name="dog_registration_number" value="{{ entry.dog_registration_number or '' }}">
       </div>
       <div class="form-group">
-        <label><input type="checkbox" name="is_paid" value="1" {% if entry.is_paid %}checked{% endif %}> Paid</label>
-      </div>
-      <div class="form-group">
         <label>Payment reference <span class="form-hint">(PayPal txn id, check #, "Cash", etc.)</span></label>
         <input type="text" name="payment_reference" value="{{ entry.payment_reference or '' }}" placeholder="e.g. Check #4321 or Cash">
       </div>
@@ -79,6 +77,8 @@
       <tr><td style="color:#666;">Verification Sent</td><td>{{ '✓' if entry.verification_sent else '—' }}</td></tr>
     </table>
 
+    {{ payment_actions('entry', entry, entry.total_fee_cents, csrf_token, today) }}
+
     <h3>Address</h3>
     <p style="line-height:1.7;">
       {{ entry.address_line1 }}<br>
@@ -95,6 +95,9 @@
     </form>
   </div>
 </div>
+
+<h2 style="margin-top:2rem;">Payment History</h2>
+{{ payment_history(payments) }}
 
 <h2 style="margin-top:2rem;">Class Selections</h2>
 {% if selection_rows %}

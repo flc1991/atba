@@ -1,3 +1,4 @@
+import secrets
 from datetime import date, datetime
 
 from sqlalchemy import (
@@ -136,6 +137,12 @@ class TrialEntry(Base):
     # or a check / cash reference entered by an admin for manual entries.
     payment_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_paid: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    # Unguessable link token so guests can reach their own checkout/confirmation pages.
+    access_token: Mapped[str | None] = mapped_column(
+        String(64), unique=True, index=True, nullable=True,
+        default=lambda: secrets.token_urlsafe(32),
+    )
 
     is_manual_entry: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     verification_sent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

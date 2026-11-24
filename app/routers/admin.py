@@ -9,15 +9,28 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from app.dependencies import get_db, require_admin
+from app.dependencies import get_db, require_admin, require_secretary
 from app.models.event import EVENT_TYPES, Event
 from app.models.event_pdf import DOCUMENT_TYPES, EventPdf
 from app.models.member import Member
-from app.models.registration import Registration
+from app.models.payment import PAYMENT_METHODS, Payment
+from app.models.registration import Registration, RegistrationDog
 from app.models.trial import Trial, TrialEntry, TrialEntrySelection, TrialEvent, TrialEventClass
 from app.models.user import User
 from app.utils.countries import get_country_choices
+from app.utils import email_helpers
 from app.utils.flash import flash
+from app.utils.payment_records import (
+    awaiting_checks,
+    check_info,
+    detach_payments,
+    get_record,
+    history,
+    mark_unpaid,
+    parse_dollars,
+    record_payment,
+    today_et,
+)
 from app.utils.registration_windows import compute_ahba_close, compute_akc_close, get_trial_status
 from app.utils.registry import resolve_ahba_number_type
 from app.routers.trials import _parse_selection_rows, _compute_fee_from_rows
@@ -50,6 +63,191 @@ def _admin_ctx(request: Request, admin_user: User) -> dict:
         "flash_messages": get_flash_messages(request),
         "csrf_token": _csrf(request),
     }
+
+
+def _complete(db: Session, model, kind: str, **filters):
+    """Records not waiting on a check; those are incomplete and listed separately."""
+    waiting = db.query(Payment.record_id).filter(
+        Payment.kind == kind, Payment.status == "awaiting_check", Payment.record_id.isnot(None)
+    )
+    return db.query(model).filter_by(**filters).filter(model.id.notin_(waiting))
+
+
+def _check_rows(db: Session, event_id: int | None = None) -> list[dict]:
+    """Outstanding checks, soonest event first."""
+    rows = []
+    for kind in ("entry", "registration"):
+        for record_id, payment in awaiting_checks(db, kind).items():
+            rec = get_record(db, kind, record_id)
+            if rec is None or (event_id is not None and rec.event_id != event_id):
+                continue
+            event = db.get(Event, rec.event_id)
+            info = check_info(db, rec, event, payment)
+            rows.append({
+                "kind": kind, "record": rec, "payment": payment, "event": event,
+                "name": rec.handler_name if kind == "entry" else rec.name,
+                "email": rec.handler_email if kind == "entry" else rec.email,
+                "dog": rec.dog_name,
+                "body": rec.governing_body if kind == "entry" else "",
+                "deadline": info["deadline"], "overdue": info["overdue"],
+            })
+    rows.sort(key=lambda r: (r["event"].start_date, r["name"].lower()))
+    return rows
+
+
+def _records_url(rec) -> str:
+    page = "registrations" if isinstance(rec, Registration) else "trial-entries"
+    return f"/admin/events/{rec.event_id}/{page}"
+
+
+def _payment_fields(form) -> dict:
+    """Amount, date and reference from a payment form. Raises ValueError if invalid."""
+    raw = (form.get("received_on") or "").strip()
+    try:
+        received_on = date.fromisoformat(raw) if raw else today_et()
+    except ValueError as exc:
+        raise ValueError("Enter a valid date.") from exc
+    return {
+        "received_cents": parse_dollars(form.get("amount")),
+        "received_on": received_on,
+        "reference": (form.get("reference") or "").strip()[:200] or None,
+    }
+
+
+def _queue_confirmation(request: Request, background_tasks: BackgroundTasks, rec) -> None:
+    if rec.verification_sent:
+        return
+    if not email_helpers.mail_configured():
+        flash(request, "Email is not configured, so no confirmation was sent.", "error")
+        return
+    email_helpers.queue_email(background_tasks, rec)
+
+
+def _flash_paid(request: Request, label: str, due: int, received: int) -> None:
+    flash(request, f"{label} — marked paid.", "success")
+    if received != due:
+        flash(request, f"Received ${received / 100:.2f}, but ${due / 100:.2f} was due.", "error")
+
+
+# ============================================================
+# Payments and checks
+# ============================================================
+
+@router.get("/checks", response_class=HTMLResponse)
+def checks_list(
+    request: Request,
+    user: User = Depends(require_secretary),
+    db: Session = Depends(get_db),
+):
+    ctx = _admin_ctx(request, user)
+    ctx.update({"rows": _check_rows(db), "today": today_et().isoformat()})
+    return templates.TemplateResponse(request, "admin/checks.html", ctx)
+
+
+@router.post("/checks/{payment_id}/arrived")
+async def check_arrived(
+    payment_id: int,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(require_secretary),
+    db: Session = Depends(get_db),
+):
+    form = await request.form()
+    _validate_csrf(form.get("csrf_token", ""), request)
+    payment = db.get(Payment, payment_id)
+    rec = get_record(db, payment.kind, payment.record_id) if payment else None
+    if rec is None:
+        raise HTTPException(404)
+    # Secretaries can't open the event lists, so they always go back to the checks page.
+    back = "/admin/checks"
+    if form.get("back") == "event" and user.role == "admin":
+        back = _records_url(rec)
+    if payment.status != "awaiting_check":
+        flash(request, "That check is no longer outstanding.", "info")
+        return RedirectResponse(back, status_code=303)
+    try:
+        fields = _payment_fields(form)
+        if not fields["reference"]:
+            raise ValueError("Enter the check number.")
+    except ValueError as exc:
+        flash(request, str(exc), "error")
+        return RedirectResponse(back, status_code=303)
+    if record_payment(db, rec, "check", user=user, **fields):
+        db.commit()
+        _flash_paid(request, rec.dog_name, payment.total_cents, fields["received_cents"])
+        _queue_confirmation(request, background_tasks, rec)
+    else:
+        flash(request, "That entry is already paid.", "info")
+    return RedirectResponse(back, status_code=303)
+
+
+@router.post("/payment-reviews/{payment_id}/done")
+async def payment_review_done(
+    payment_id: int,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    form = await request.form()
+    _validate_csrf(form.get("csrf_token", ""), request)
+    payment = db.get(Payment, payment_id)
+    if payment is None:
+        raise HTTPException(404)
+    payment.needs_review = False
+    payment.note = f"{payment.note or ''} (reviewed by {admin.name} <{admin.email}>)"[:500]
+    db.commit()
+    flash(request, "Payment marked as reviewed.", "success")
+    return RedirectResponse("/admin/", status_code=303)
+
+
+@router.post("/payments/{kind}/{record_id}/paid")
+async def payment_mark_paid(
+    kind: str,
+    record_id: int,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    form = await request.form()
+    _validate_csrf(form.get("csrf_token", ""), request)
+    rec = get_record(db, kind, record_id)
+    if rec is None:
+        raise HTTPException(404)
+    try:
+        method = form.get("method")
+        if method not in PAYMENT_METHODS or method == "free":
+            raise ValueError("Choose a payment method.")
+        fields = _payment_fields(form)
+    except ValueError as exc:
+        flash(request, str(exc), "error")
+        return RedirectResponse(_records_url(rec), status_code=303)
+    if record_payment(db, rec, method, user=admin, **fields):
+        db.commit()
+        _flash_paid(request, rec.dog_name, history(db, rec)[-1].total_cents, fields["received_cents"])
+        _queue_confirmation(request, background_tasks, rec)
+    else:
+        flash(request, "That entry is already paid.", "info")
+    return RedirectResponse(_records_url(rec), status_code=303)
+
+
+@router.post("/payments/{kind}/{record_id}/unpaid")
+async def payment_mark_unpaid(
+    kind: str,
+    record_id: int,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    form = await request.form()
+    _validate_csrf(form.get("csrf_token", ""), request)
+    rec = get_record(db, kind, record_id)
+    if rec is None:
+        raise HTTPException(404)
+    mark_unpaid(db, rec, admin)
+    db.commit()
+    flash(request, f"{rec.dog_name} — marked unpaid.", "success")
+    return RedirectResponse(_records_url(rec), status_code=303)
 
 
 # ============================================================
@@ -89,23 +287,28 @@ def dashboard(
         if ev.event_type == "trial":
             event_counts[ev.id] = {
                 "label": "entries",
-                "count": db.query(TrialEntry).filter_by(event_id=ev.id).count(),
+                "count": _complete(db, TrialEntry, "entry", event_id=ev.id).count(),
             }
         elif ev.event_type in ("fun_run", "smart_dog_day"):
             event_counts[ev.id] = {
                 "label": "registrations",
-                "count": db.query(Registration).filter_by(event_id=ev.id).count(),
+                "count": _complete(db, Registration, "registration", event_id=ev.id).count(),
             }
         else:
             event_counts[ev.id] = {"label": "", "count": 0}
     ctx = _admin_ctx(request, admin)
+    reviews = [
+        {"payment": p, "record": get_record(db, p.kind, p.record_id)}
+        for p in db.query(Payment).filter_by(needs_review=True).order_by(Payment.id)
+    ]
     ctx.update({
+        "reviews": reviews,
         "upcoming_events": upcoming_events,
         "event_counts": event_counts,
         "recent_entries": recent_entries,
         "recent_regs": recent_regs,
-        "total_entries": db.query(TrialEntry).count(),
-        "total_regs": db.query(Registration).count(),
+        "total_entries": _complete(db, TrialEntry, "entry").count(),
+        "total_regs": _complete(db, Registration, "registration").count(),
         "total_members": db.query(Member).filter(Member.status.in_(("pending", "member"))).count(),
     })
     return templates.TemplateResponse(request, "admin/dashboard.html", ctx)
@@ -454,9 +657,10 @@ def trial_entries_list(
     # Group entries by governing body, then by user (handler_email lowercased).
     sections: dict[str, dict] = {"AKC": {"groups": []}, "AHBA": {"groups": []}}
     bodies = {body: {} for body in ("AKC", "AHBA")}
+    waiting = awaiting_checks(db, "entry")
     for entry in entries:
         body = entry.governing_body
-        if body not in bodies:
+        if body not in bodies or entry.id in waiting:
             continue
         key = (entry.handler_email or "").strip().lower() or f"id:{entry.id}"
         bodies[body].setdefault(key, {
@@ -484,6 +688,8 @@ def trial_entries_list(
     ctx.update({
         "event": event,
         "sections": sections,
+        "check_rows": _check_rows(db, event_id),
+        "today": today_et().isoformat(),
         "trial_secretaries": trial_secretaries,
     })
     return templates.TemplateResponse(request, "admin/trial_entries.html", ctx)
@@ -534,6 +740,9 @@ def export_trial_xlsx(
         .order_by(TrialEntry.governing_body, TrialEntry.handler_name, TrialEntry.id)
         .all()
     )
+    # Entries waiting on a check are incomplete: own sheet, not in the others.
+    waiting = awaiting_checks(db, "entry")
+    all_entries = [e for e in all_entries if e.id not in waiting]
 
     wb = Workbook()
     # We build AKC + AHBA into their own tabs, then drop the default sheet.
@@ -726,6 +935,24 @@ def export_trial_xlsx(
         max_len = max((len(str(c.value)) for c in col if c.value), default=10)
         cnt.column_dimensions[col[0].column_letter].width = min(max_len + 2, 40)
 
+    # ---- Sheet 4: Awaiting Check ----
+    chk = wb.create_sheet("Awaiting Check")
+    chk.append(["Body", "Owner Name", "Email", "Dog", "Amount ($)", "Must arrive by", "Overdue", "Events"])
+    for cell in chk[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill(start_color="2C6E2E", end_color="2C6E2E", fill_type="solid")
+    for row in _check_rows(db, event_id):
+        sels = db.query(TrialEntrySelection).filter_by(trial_entry_id=row["record"].id).all()
+        events = [db.get(TrialEvent, s.trial_event_id) for s in sels]
+        chk.append([
+            row["body"], row["name"], row["email"], row["dog"],
+            round(row["payment"].total_cents / 100, 2), row["deadline"] or "",
+            "Yes" if row["overdue"] else "No", ", ".join(te.name for te in events if te),
+        ])
+    for col in chk.columns:
+        max_len = max((len(str(c.value)) for c in col if c.value), default=10)
+        chk.column_dimensions[col[0].column_letter].width = min(max_len + 2, 40)
+
     # openpyxl turns any string starting with "=" into a formula. Names etc. are
     # entrant-supplied and this export has no formulas, so force plain text.
     for sheet in wb.worksheets:
@@ -810,6 +1037,8 @@ def trial_entry_detail(
         "entry": entry,
         "trial": trial,
         "selection_rows": selection_rows,
+        "payments": history(db, entry),
+        "today": today_et().isoformat(),
     })
     return templates.TemplateResponse(request, "admin/trial_entry_form.html", ctx)
 
@@ -832,27 +1061,10 @@ async def trial_entry_edit(
     entry.dog_registration_number = form.get("dog_registration_number", "").strip() or None
     if entry.governing_body == "AHBA" and "ahba_number_type" in form:
         entry.ahba_number_type = resolve_ahba_number_type(form)
-    entry.is_paid = form.get("is_paid") == "1"
     entry.payment_reference = (form.get("payment_reference") or "").strip() or None
     db.commit()
     flash(request, "Entry updated.", "success")
     return RedirectResponse(f"/admin/trial-entries/{entry_id}", status_code=303)
-
-
-@router.post("/trial-entries/{entry_id}/toggle-paid")
-async def trial_entry_toggle_paid(
-    entry_id: int,
-    request: Request,
-    admin: User = Depends(require_admin),
-    db: Session = Depends(get_db),
-):
-    form = await request.form()
-    _validate_csrf(form.get("csrf_token", ""), request)
-    entry = _get_entry(entry_id, db)
-    entry.is_paid = not entry.is_paid
-    db.commit()
-    flash(request, f"{entry.handler_name} / {entry.dog_name} — marked {'paid' if entry.is_paid else 'unpaid'}.", "success")
-    return RedirectResponse(f"/admin/events/{entry.event_id}/trial-entries", status_code=303)
 
 
 @router.post("/trial-entries/{entry_id}/delete")
@@ -866,7 +1078,10 @@ async def trial_entry_delete(
     _validate_csrf(form.get("csrf_token", ""), request)
     entry = _get_entry(entry_id, db)
     event_id = entry.event_id
-    # Selections cascade via ondelete=CASCADE on TrialEntrySelection.trial_entry_id
+    # SQLite isn't enforcing foreign keys, so nothing cascades, and it reuses row ids:
+    # leftovers would attach themselves to the next entry.
+    db.query(TrialEntrySelection).filter_by(trial_entry_id=entry.id).delete()
+    detach_payments(db, entry, f"{entry.handler_name} / {entry.dog_name}", admin)
     db.delete(entry)
     db.commit()
     flash(request, f"Deleted entry for {entry.handler_name} / {entry.dog_name}.", "success")
@@ -996,6 +1211,7 @@ def _manual_entry_ctx(request: Request, admin: User, db: Session, event_id: int,
 
 
 def _save_manual_entry(
+    admin: User,
     *, request: Request, db: Session, event, trial, trial_events,
     te_classes_map, form, governing_body: str,
     day_choices: tuple[str, ...],
@@ -1062,7 +1278,7 @@ def _save_manual_entry(
         ahba_agent_email=fget("ahba_agent_email") or None,
         signature=fget("signature") or None,
         total_fee_cents=_compute_fee_from_rows(selection_rows, trial_events),
-        is_paid=bool(form.get("is_paid")),
+        is_paid=False,
         payment_reference=(form.get("payment_reference") or "").strip() or None,
         is_manual_entry=True,
     )
@@ -1077,6 +1293,11 @@ def _save_manual_entry(
             akc_trial_pref=row["pref"],
             day_preference=row["day_preference"],
         ))
+    if form.get("is_paid"):
+        record_payment(
+            db, entry, "other", received_cents=entry.total_fee_cents,
+            reference=entry.payment_reference, user=admin,
+        )
 
     db.commit()
     db.refresh(entry)
@@ -1105,7 +1326,7 @@ async def trial_entry_manual_akc_post(
     _validate_csrf(form.get("csrf_token", ""), request)
     _, event, trial, trial_events, te_classes_map = _manual_entry_ctx(request, admin, db, event_id, "AKC")
     entry = _save_manual_entry(
-        request=request, db=db, event=event, trial=trial,
+        admin=admin, request=request, db=db, event=event, trial=trial,
         trial_events=trial_events, te_classes_map=te_classes_map,
         form=form, governing_body="AKC",
         day_choices=("friday", "saturday"),
@@ -1136,7 +1357,7 @@ async def trial_entry_manual_ahba_post(
     _validate_csrf(form.get("csrf_token", ""), request)
     _, event, trial, trial_events, te_classes_map = _manual_entry_ctx(request, admin, db, event_id, "AHBA")
     entry = _save_manual_entry(
-        request=request, db=db, event=event, trial=trial,
+        admin=admin, request=request, db=db, event=event, trial=trial,
         trial_events=trial_events, te_classes_map=te_classes_map,
         form=form, governing_body="AHBA",
         day_choices=("saturday", "sunday"),
@@ -1160,6 +1381,7 @@ def call_numbers_get(
     trials = db.query(Trial).filter_by(event_id=event_id).order_by(Trial.governing_body).all()
 
     # Build: per trial → per TrialEvent → selections with call numbers
+    waiting = awaiting_checks(db, "entry")
     trial_data = []
     for trial in trials:
         te_data = []
@@ -1173,7 +1395,9 @@ def call_numbers_get(
             rows = []
             for sel in sels:
                 entry = db.get(TrialEntry, sel.trial_entry_id)
-                cls = db.get(TrialEventClass, sel.trial_event_class_id)
+                if entry is None or entry.id in waiting:
+                    continue
+                cls = db.get(TrialEventClass, sel.trial_event_class_id) if sel.trial_event_class_id else None
                 rows.append({"sel": sel, "entry": entry, "cls": cls})
             te_data.append({"te": te, "rows": rows})
         trial_data.append({"trial": trial, "te_data": te_data})
@@ -1253,9 +1477,15 @@ def registrations_list(
     db: Session = Depends(get_db),
 ):
     event = _get_event(event_id, db)
-    regs = db.query(Registration).filter_by(event_id=event_id).order_by(Registration.id).all()
+    regs = _complete(db, Registration, "registration", event_id=event_id).order_by(Registration.id).all()
     ctx = _admin_ctx(request, admin)
-    ctx.update({"event": event, "registrations": regs})
+    ctx.update({
+        "event": event,
+        "registrations": regs,
+        "payments": {reg.id: history(db, reg) for reg in regs},
+        "check_rows": _check_rows(db, event_id),
+        "today": today_et().isoformat(),
+    })
     return templates.TemplateResponse(request, "admin/registrations.html", ctx)
 
 
@@ -1274,10 +1504,31 @@ async def registration_edit(
     reg.name = form.get("name", reg.name).strip()
     reg.email = form.get("email", reg.email).strip()
     reg.dog_name = form.get("dog_name", reg.dog_name).strip()
-    reg.is_paid = form.get("is_paid") == "1"
+    reg.payment_reference = (form.get("payment_reference") or "").strip() or None
     db.commit()
     flash(request, "Registration updated.", "success")
     return RedirectResponse(f"/admin/events/{reg.event_id}/registrations", status_code=303)
+
+
+@router.post("/registrations/{reg_id}/delete")
+async def registration_delete(
+    reg_id: int,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    form = await request.form()
+    _validate_csrf(form.get("csrf_token", ""), request)
+    reg = db.get(Registration, reg_id)
+    if not reg:
+        raise HTTPException(404)
+    back = _records_url(reg)
+    db.query(RegistrationDog).filter_by(registration_id=reg.id).delete()
+    detach_payments(db, reg, f"{reg.name} / {reg.dog_name}", admin)
+    flash(request, f"Deleted registration for {reg.name} / {reg.dog_name}.", "success")
+    db.delete(reg)
+    db.commit()
+    return RedirectResponse(back, status_code=303)
 
 
 @router.post("/registrations/new")
@@ -1290,6 +1541,11 @@ async def registration_manual(
     _validate_csrf(form.get("csrf_token", ""), request)
     event_id = int(form.get("event_id", 0))
     _get_event(event_id, db)
+    try:
+        fee_cents = parse_dollars(form.get("fee_dollars") or "0")
+    except ValueError as exc:
+        flash(request, str(exc), "error")
+        return RedirectResponse(f"/admin/events/{event_id}/registrations", status_code=303)
     reg = Registration(
         event_id=event_id,
         name=form.get("name", "").strip(),
@@ -1301,11 +1557,18 @@ async def registration_manual(
         country=form.get("country", "US"),
         dog_name=form.get("dog_name", "").strip(),
         pricing_tier=form.get("pricing_tier", "late"),
-        fee_cents=int(round(float(form.get("fee_dollars", 0) or 0) * 100)),
-        is_paid=form.get("is_paid") == "1",
+        fee_cents=fee_cents,
+        payment_reference=(form.get("payment_reference") or "").strip() or None,
+        is_paid=False,
         is_manual_entry=True,
     )
     db.add(reg)
+    db.flush()
+    if form.get("is_paid") == "1":
+        record_payment(
+            db, reg, "other", received_cents=fee_cents,
+            reference=reg.payment_reference, user=admin,
+        )
     db.commit()
     flash(request, f"Manual registration created for {reg.name}.", "success")
     return RedirectResponse(f"/admin/events/{event_id}/registrations", status_code=303)
@@ -1853,6 +2116,17 @@ async def user_dog_delete(
 # Email verification (Phase 11a) — stubs wired to email_helpers
 # ============================================================
 
+def _send_email(request: Request, background_tasks: BackgroundTasks, rec, recipient: str) -> None:
+    """Queue an email. verification_sent is set only once it has really been sent."""
+    if not recipient:
+        flash(request, "That record has no email address.", "error")
+    elif not email_helpers.mail_configured():
+        flash(request, "Email is not configured (MAIL_FROM is blank).", "error")
+    else:
+        email_helpers.queue_email(background_tasks, rec)
+        flash(request, f"Email queued for {recipient}.", "success")
+
+
 @router.post("/trial-entries/{entry_id}/send-verification")
 async def send_entry_verification(
     entry_id: int,
@@ -1864,11 +2138,7 @@ async def send_entry_verification(
     form = await request.form()
     _validate_csrf(form.get("csrf_token", ""), request)
     entry = _get_entry(entry_id, db)
-    from app.utils.email_helpers import send_trial_entry_verification
-    background_tasks.add_task(send_trial_entry_verification, entry_id=entry_id)
-    entry.verification_sent = True
-    db.commit()
-    flash(request, f"Verification email queued for {entry.handler_email}.", "success")
+    _send_email(request, background_tasks, entry, entry.handler_email)
     return RedirectResponse(f"/admin/trial-entries/{entry_id}", status_code=303)
 
 
@@ -1885,11 +2155,7 @@ async def send_reg_verification(
     reg = db.get(Registration, reg_id)
     if not reg:
         raise HTTPException(404)
-    from app.utils.email_helpers import send_registration_verification
-    background_tasks.add_task(send_registration_verification, reg_id=reg_id)
-    reg.verification_sent = True
-    db.commit()
-    flash(request, f"Verification email queued for {reg.email}.", "success")
+    _send_email(request, background_tasks, reg, reg.email)
     return RedirectResponse(f"/admin/events/{reg.event_id}/registrations", status_code=303)
 
 
@@ -1901,24 +2167,20 @@ async def send_all_verifications(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
+    """Email every paid record that hasn't had its confirmation yet."""
     form = await request.form()
     _validate_csrf(form.get("csrf_token", ""), request)
-    from app.utils.email_helpers import send_trial_entry_verification, send_registration_verification
-
-    entries = db.query(TrialEntry).filter_by(event_id=event_id, verification_sent=False).all()
-    for entry in entries:
-        background_tasks.add_task(send_trial_entry_verification, entry_id=entry.id)
-        entry.verification_sent = True
-
-    regs = db.query(Registration).filter_by(event_id=event_id, verification_sent=False).all()
-    for reg in regs:
-        background_tasks.add_task(send_registration_verification, reg_id=reg.id)
-        reg.verification_sent = True
-
-    db.commit()
-    total = len(entries) + len(regs)
-    flash(request, f"{total} verification email(s) queued.", "success")
-    return RedirectResponse(f"/admin/events/{event_id}/edit", status_code=303)
+    back = RedirectResponse(f"/admin/events/{event_id}/edit", status_code=303)
+    if not email_helpers.mail_configured():
+        flash(request, "Email is not configured (MAIL_FROM is blank).", "error")
+        return back
+    due = {"event_id": event_id, "verification_sent": False, "is_paid": True}
+    records = [r for r in db.query(TrialEntry).filter_by(**due) if r.handler_email]
+    records += [r for r in db.query(Registration).filter_by(**due) if r.email]
+    for rec in records:
+        email_helpers.queue_email(background_tasks, rec)
+    flash(request, f"{len(records)} confirmation email(s) queued for paid entries.", "success")
+    return back
 
 
 # ============================================================

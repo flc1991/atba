@@ -1,0 +1,81 @@
+{% macro payment_actions(kind, rec, amount_cents, csrf_token, today) -%}
+  {% if rec.is_paid %}
+    <form method="post" action="/admin/payments/{{ kind }}/{{ rec.id }}/unpaid" style="display:inline;"
+          onsubmit="return confirm('Mark this as unpaid? The payment stays in the history as void.')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn-secondary btn-sm">Mark unpaid</button>
+    </form>
+  {% else %}
+    <details style="display:inline-block;">
+      <summary class="btn btn-sm" style="background:#27ae60; color:#fff; cursor:pointer;">Mark paid</summary>
+      <form method="post" action="/admin/payments/{{ kind }}/{{ rec.id }}/paid" style="padding:0.5rem; max-width:280px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label>Method
+          <select name="method">
+            <option value="paypal">PayPal</option><option value="check">Check</option>
+            <option value="cash">Cash</option><option value="other">Other</option>
+          </select></label>
+        <label>Amount received ($) <input type="number" name="amount" min="0" step="0.01" value="{{ '%.2f' | format(amount_cents / 100) }}" required></label>
+        <label>Reference <input type="text" name="reference" maxlength="200" placeholder="Check # or PayPal transaction ID"></label>
+        <label>Date received <input type="date" name="received_on" value="{{ today }}"></label>
+        <button type="submit" class="btn btn-primary btn-sm">Save payment</button>
+      </form>
+    </details>
+  {% endif %}
+{%- endmacro %}
+
+{% macro check_table(rows, csrf_token, today, back, can_delete) -%}
+  <div class="table-wrapper"><table>
+    <thead><tr><th>Event</th><th>Name</th><th>Dog</th><th>Amount</th><th>Deadline</th><th></th></tr></thead>
+    <tbody>
+    {% for row in rows %}
+      <tr>
+        <td>{{ row.event.title }}{% if row.body %} ({{ row.body }}){% endif %}</td>
+        <td>{{ row.name }}<br><small>{{ row.email }}</small></td>
+        <td>{{ row.dog }}</td>
+        <td>${{ "%.2f" | format(row.payment.total_cents / 100) }}</td>
+        <td>{{ row.deadline or '—' }}{% if row.overdue %}<br><strong style="color:#c0392b;">Overdue</strong>{% endif %}</td>
+        <td>
+          <details>
+            <summary class="btn btn-primary btn-sm" style="cursor:pointer;">Check arrived</summary>
+            <form method="post" action="/admin/checks/{{ row.payment.id }}/arrived" style="padding:0.5rem; max-width:260px;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="back" value="{{ back }}">
+              <label>Check # <input type="text" name="reference" maxlength="200" required></label>
+              <label>Amount received ($) <input type="number" name="amount" min="0" step="0.01" value="{{ '%.2f' | format(row.payment.total_cents / 100) }}" required></label>
+              <label>Date received <input type="date" name="received_on" value="{{ today }}" required></label>
+              <button type="submit" class="btn btn-primary btn-sm">Save</button>
+            </form>
+          </details>
+          {% if can_delete %}
+            {% if row.kind == 'entry' %}<a href="/admin/trial-entries/{{ row.record.id }}" class="btn btn-secondary btn-sm">Edit</a>{% endif %}
+            <form method="post" action="/admin/{{ 'trial-entries' if row.kind == 'entry' else 'registrations' }}/{{ row.record.id }}/delete" style="display:inline;"
+                  onsubmit='return confirm({{ ("Delete the entry for " ~ row.dog ~ "?")|tojson }})'>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+            </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+{%- endmacro %}
+
+{% macro payment_history(payments) -%}
+  {% if payments %}
+  <div class="table-wrapper"><table>
+    <thead><tr><th>Created</th><th>Method</th><th>Status</th><th>Due</th><th>Received</th><th>Reference</th><th>Recorded by</th><th>Note</th></tr></thead>
+    <tbody>
+    {% for p in payments %}
+      <tr>
+        <td>{{ p.created_et }}</td><td>{{ p.method | title }}</td><td>{{ p.status | replace('_', ' ') | title }}</td>
+        <td>${{ "%.2f" | format(p.total_cents / 100) }}</td>
+        <td>{% if p.received_cents is not none %}${{ "%.2f" | format(p.received_cents / 100) }}{% if p.received_on %} on {{ p.received_on }}{% endif %}{% else %}—{% endif %}</td>
+        <td>{{ p.reference or '—' }}</td><td>{{ p.recorded_by or '—' }}</td><td>{{ p.note or '' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p style="color:#888;"><em>No payment history.</em></p>{% endif %}
+{%- endmacro %}

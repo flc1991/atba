@@ -1,0 +1,10 @@
+{% if status == "awaiting_check" %}
+YOUR ENTRY IS INCOMPLETE UNTIL YOUR CHECK ARRIVES.
+Payable to: {{ check.payee }} (trial secretary)
+Mail to: {{ check.address }}
+{% if check.deadline %}Must arrive by: {{ check.deadline }}
+{% endif %}View your entry: {{ record_url }}
+{% elif status == "unpaid" %}
+We have not confirmed a payment for this entry yet.
+View your entry and payment options: {{ record_url }}
+{% endif %}

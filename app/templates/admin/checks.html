@@ -1,0 +1,10 @@
+{% extends "admin/base.html" %}
+{% from "admin/_payment_macros.html" import check_table %}
+{% block title %}Checks — Admin{% endblock %}
+
+{% block admin_content %}
+<h1>Awaiting Checks</h1>
+<p>These entries are incomplete until their check is marked as arrived.</p>
+{% if rows %}{{ check_table(rows, csrf_token, today, 'checks', current_user.role == 'admin') }}
+{% else %}<p>No checks are expected.</p>{% endif %}
+{% endblock %}

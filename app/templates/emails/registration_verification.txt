@@ -1,16 +1,17 @@
-REGISTRATION CONFIRMED
+REGISTRATION {{ "CONFIRMED" if status == "paid" else "RECEIVED" }}
 {{ event.title }}
 
 Dear {{ reg.name }},
 
-Your registration for {{ event.title }} ({{ event.start_date.strftime('%B %d, %Y') }}) has been confirmed.
+Your registration for {{ event.title }} ({{ event.start_date.strftime('%B %d, %Y') }}) has been {{ "confirmed" if status == "paid" else "received" }}.
 
 Name: {{ reg.name }}
-Dog: {{ reg.dog_name }}
+Dog: {{ dog_names }}
 Rate: {{ reg.pricing_tier | replace('_', ' ') | title }}
-Amount Paid: ${{ "%.2f" | format(reg.fee_cents / 100) }}
+{{ "Amount Paid" if status == "paid" else "Amount Due" }}: ${{ "%.2f" | format(amount_cents / 100) }}
+{% include "emails/_payment_status.txt" %}
 
-We look forward to seeing you and {{ reg.dog_name }} at the event!
+We look forward to seeing you and {{ dog_names }} at the event!
 
 Thank you,
 ATBA

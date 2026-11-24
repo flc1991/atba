@@ -8,9 +8,10 @@
     {% set admin_links = [
       ('/admin/', 'Dashboard'),
       ('/admin/events', 'Events'),
+      ('/admin/checks', 'Checks'),
       ('/admin/members', 'Members'),
       ('/admin/users', 'Users'),
-    ] %}
+    ] if current_user.role == 'admin' else [('/admin/checks', 'Checks')] %}
     {% for href, label in admin_links %}
       <a href="{{ href }}"
          style="display:block; padding:0.5rem 1rem; color:#ecf0f1; text-decoration:none;

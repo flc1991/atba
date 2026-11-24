@@ -1,0 +1,11 @@
+<div style="text-align:left; background:#fef9e7; border-left:4px solid #f39c12; padding:0.75rem 1rem; border-radius:4px;">
+  <div><strong>Amount:</strong> ${{ "%.2f" | format(check.amount_cents / 100) }}</div>
+  <div><strong>Payable to:</strong> {{ check.payee }} (trial secretary)</div>
+  <div><strong>Mail to:</strong> {{ check.address }}</div>
+  {% if check.deadline %}<div><strong>Must arrive by:</strong> {{ check.deadline }}</div>{% endif %}
+  {% if check.overdue %}
+    <p style="margin:0.5rem 0 0; color:#c0392b;"><strong>This deadline has passed.</strong> Please contact the trial secretary.</p>
+  {% elif check.soon %}
+    <p style="margin:0.5rem 0 0; color:#c0392b;">The deadline is less than a week away, so a mailed check may not arrive in time. You can deliver it by hand.</p>
+  {% endif %}
+</div>

@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     SECRET_KEY: str = "dev-secret-key-change-in-production"
     DEBUG: bool = False
@@ -13,8 +13,11 @@ class Settings(BaseSettings):
     PAYPAL_CLIENT_ID: str = ""
     PAYPAL_CLIENT_SECRET: str = ""
     PAYPAL_MODE: str = "sandbox"  # "sandbox" or "live"
-    # PayPal Standard Payments (form-redirect flow): merchant email collected by PayPal.
-    PAYPAL_BUSINESS_EMAIL: str = ""
+    PAYPAL_WEBHOOK_ID: str = ""
+
+    # Check payments are offered only when both are set.
+    CHECK_PAYEE_NAME: str = ""
+    CHECK_MAILING_ADDRESS: str = ""
 
     MAIL_USERNAME: str = ""
     MAIL_PASSWORD: str = ""
@@ -31,11 +34,10 @@ class Settings(BaseSettings):
         return "https://api-m.sandbox.paypal.com"
 
     @property
-    def paypal_checkout_url(self) -> str:
-        """Endpoint for PayPal Standard Payments form POST (cgi-bin/webscr)."""
-        if self.PAYPAL_MODE == "live":
-            return "https://www.paypal.com/cgi-bin/webscr"
-        return "https://www.sandbox.paypal.com/cgi-bin/webscr"
+    def paypal_enabled(self) -> bool:
+        """True once real credentials (not the .env.example placeholders) are set."""
+        keys = (self.PAYPAL_CLIENT_ID, self.PAYPAL_CLIENT_SECRET)
+        return all(k and not k.startswith("your-") for k in keys)
 
 
 settings = Settings()
