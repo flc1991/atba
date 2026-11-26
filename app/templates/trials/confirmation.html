@@ -76,6 +76,12 @@
         <td style="padding:0.4rem 0; color:#666;">{{ "Total paid" if entry.is_paid else "Amount due" }}</td>
         <td style="padding:0.4rem 0;"><strong>${{ "%.2f" | format(amount_cents / 100) }}</strong></td>
       </tr>
+      {% if balance_cents %}
+      <tr>
+        <td style="padding:0.4rem 0; color:#666;">Fee changed</td>
+        <td style="padding:0.4rem 0;">New entry fee: ${{ "%.2f" | format(entry.total_fee_cents / 100) }}<br>{% if balance_cents > 0 %}<strong style="color:#c0392b;">Balance due: ${{ "%.2f" | format(balance_cents / 100) }}</strong>{% elif balance_cents < 0 %}<strong style="color:#7a6500;">Refund due: ${{ "%.2f" | format(-balance_cents / 100) }}</strong>{% endif %}</td>
+      </tr>
+      {% endif %}
     </table>
 
     <h4 style="margin-top:1.5rem; margin-bottom:0.5rem;">Class Entries</h4>

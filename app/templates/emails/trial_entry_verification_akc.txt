@@ -5,17 +5,7 @@ Dear {{ entry.handler_name }},
 
 Your AKC trial entry has been received{% if status == "paid" %} and payment confirmed{% endif %}.
 
-Dog: {{ entry.dog_name }}{% if entry.dog_breed %} ({{ entry.dog_breed }}){% endif %}
-
-{% if entry.dog_registration_number %}Registration Number: {{ entry.dog_registration_number }}
-{% endif %}Handler: {{ entry.handler_name }}
-{{ "Total Paid" if status == "paid" else "Amount Due" }}: ${{ "%.2f" | format(amount_cents / 100) }}
-{% include "emails/_payment_status.txt" %}
-
-AKC CLASS ENTRIES:
-{% for sel in selections %}
-  {{ sel.event_name }} — {{ sel.class_name }} — Call #: {{ sel.call_number if sel.call_number else 'TBA' }}
-{% endfor %}
+{% include "emails/_trial_entry_details.txt" %}
 
 Call numbers will be assigned after the entry period closes and a schedule will be sent.
 

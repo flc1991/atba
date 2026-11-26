@@ -11,57 +11,87 @@
 <div style="display:grid; grid-template-columns:1fr 1fr; gap:2rem;">
   {# Left: edit form #}
   <div>
-    <h2>Handler &amp; Dog</h2>
+    <h2>Edit Details</h2>
     <form method="post" action="/admin/trial-entries/{{ entry.id }}/edit">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      {% macro field(name, label, type='text', required=false, hint='') %}
       <div class="form-group">
-        <label>Handler name</label>
-        <input type="text" name="handler_name" value="{{ entry.handler_name }}" required>
+        <label for="f-{{ name }}">{{ label }}{% if hint %} <span class="form-hint">{{ hint }}</span>{% endif %}</label>
+        <input type="{{ type }}" id="f-{{ name }}" name="{{ name }}" value="{{ values[name] if values[name] is not none else '' }}"{% if required %} required{% endif %}>
       </div>
+      {% endmacro %}
+      {% macro choice(name, label, options) %}
+      {% set current = values[name] or '' %}
       <div class="form-group">
-        <label>Email</label>
-        <input type="email" name="handler_email" value="{{ entry.handler_email }}">
-      </div>
-      <div class="form-group">
-        <label>Phone</label>
-        <input type="tel" name="handler_phone" value="{{ entry.handler_phone or '' }}">
-      </div>
-      <div class="form-group">
-        <label>Dog name</label>
-        <input type="text" name="dog_name" value="{{ entry.dog_name }}" required>
-      </div>
-      <div class="form-group">
-        <label>Breed</label>
-        <input type="text" name="dog_breed" value="{{ entry.dog_breed or '' }}">
-      </div>
-      {% if entry.governing_body == 'AHBA' %}
-      {% set _known = ('AKC', 'ABCA', 'ISDS') %}
-      {% set _t = entry.ahba_number_type or '' %}
-      {% set _is_other = _t and _t not in _known %}
-      <div class="form-group">
-        <label>Registry type</label>
-        <select name="ahba_number_type"
-                onchange="document.getElementById('ahba-other-group').style.display = this.value === 'Other' ? '' : 'none';">
-          <option value="">— none —</option>
-          {% for t in _known %}
-            <option value="{{ t }}" {% if _t == t %}selected{% endif %}>{{ t }}</option>
-          {% endfor %}
-          <option value="Other" {% if _is_other %}selected{% endif %}>Other (specify)</option>
+        <label for="f-{{ name }}">{{ label }}</label>
+        <select id="f-{{ name }}" name="{{ name }}">
+          {% if current not in options | map('first') | list %}<option value="{{ current }}" selected>{{ current or '— none —' }}</option>{% endif %}
+          {% for code, text in options %}<option value="{{ code }}"{% if code == '---' %} disabled{% elif code == current %} selected{% endif %}>{{ text }}</option>{% endfor %}
         </select>
       </div>
-      <div class="form-group" id="ahba-other-group" {% if not _is_other %}style="display:none;"{% endif %}>
-        <label>Other registry name</label>
-        <input type="text" name="ahba_number_type_other" value="{{ _t if _is_other else '' }}" placeholder="e.g. NEBCA, CKC, ASCA">
+      {% endmacro %}
+
+      <h3>Handler / owner</h3>
+      {{ field('handler_name', 'Name', required=true) }}
+      {{ field('handler_email', 'Email', 'email') }}
+      {{ field('handler_phone', 'Phone', 'tel') }}
+      {{ field('address_line1', 'Address line 1') }}
+      {{ field('address_line2', 'Address line 2') }}
+      {{ field('city', 'City') }}
+      {{ field('state_province', 'State / province') }}
+      {{ field('postal_code', 'Postal code') }}
+      {{ choice('country', 'Country', countries) }}
+
+      <h3>Dog</h3>
+      {{ field('dog_name', 'Registered name', required=true) }}
+      {{ field('dog_call_name', 'Call name') }}
+      {{ field('dog_breed', 'Breed') }}
+      {{ choice('dog_sex', 'Sex', [('', '— none —'), ('M', 'Male'), ('F', 'Female')]) }}
+      {{ field('dog_dob', 'Date of birth', 'date') }}
+      {{ field('dog_sire', 'Sire') }}
+      {{ field('dog_dam', 'Dam') }}
+      {{ field('dog_breeder', 'Breeder') }}
+      {{ field('dog_place_of_birth', 'Place of birth') }}
+      {% if entry.governing_body == 'AHBA' %}
+      {% set _t = values.ahba_number_type or '' %}
+      <div class="form-group">
+        <label for="f-ahba_number_type">Registry type</label>
+        <select id="f-ahba_number_type" name="ahba_number_type"
+                onchange="document.getElementById('ahba-other-group').style.display = this.value === 'Other' ? '' : 'none';">
+          <option value="">— none —</option>
+          {% for t in ('AKC', 'ABCA', 'ISDS') %}<option value="{{ t }}"{% if _t == t %} selected{% endif %}>{{ t }}</option>{% endfor %}
+          <option value="Other"{% if _t == 'Other' %} selected{% endif %}>Other (specify)</option>
+        </select>
+      </div>
+      <div class="form-group" id="ahba-other-group"{% if _t != 'Other' %} style="display:none;"{% endif %}>
+        <label for="f-ahba_other">Other registry name</label>
+        <input type="text" id="f-ahba_other" name="ahba_number_type_other" value="{{ values.ahba_number_type_other or '' }}" placeholder="e.g. NEBCA, CKC, ASCA">
+      </div>
+      {% else %}
+      {{ choice('akc_number_type', 'Registration type', [('', '— none —'), ('AKC', 'AKC'), ('PAL_ILP', 'PAL / ILP'), ('Foreign', 'Foreign')]) }}
+      {{ field('akc_foreign_country', 'Country of origin', hint='(foreign registrations)') }}
+      {% endif %}
+      {{ field('dog_registration_number', 'Registration number') }}
+
+      {% if entry.governing_body == 'AHBA' %}
+      <h3>Agent</h3>
+      {{ field('ahba_agent_name', 'Agent name') }}
+      {{ field('ahba_agent_phone', 'Agent phone', 'tel') }}
+      {{ field('ahba_agent_email', 'Agent email', 'email') }}
+      {% else %}
+      <h3>AKC owner and ring handler</h3>
+      {{ field('akc_owner_names', 'Owner names', hint='(if different)') }}
+      {{ field('akc_owner_address', 'Owner address', hint='(if different)') }}
+      {{ field('akc_handler_name', 'Ring handler name', hint='(if different)') }}
+      {{ field('akc_handler_address', 'Ring handler address') }}
+      <div class="form-group">
+        <input type="hidden" name="akc_separate_entries_shown" value="1">
+        <label><input type="checkbox" name="akc_separate_entries" value="1"{% if values.akc_separate_entries %} checked{% endif %}> Separate entries</label>
       </div>
       {% endif %}
-      <div class="form-group">
-        <label>Registration number</label>
-        <input type="text" name="dog_registration_number" value="{{ entry.dog_registration_number or '' }}">
-      </div>
-      <div class="form-group">
-        <label>Payment reference <span class="form-hint">(PayPal txn id, check #, "Cash", etc.)</span></label>
-        <input type="text" name="payment_reference" value="{{ entry.payment_reference or '' }}" placeholder="e.g. Check #4321 or Cash">
-      </div>
+
+      <h3>Payment</h3>
+      {{ field('payment_reference', 'Payment reference', hint='(PayPal txn id, check #, "Cash", etc.)') }}
       <button type="submit" class="btn btn-primary">Save</button>
     </form>
   </div>
@@ -72,6 +102,7 @@
     <table>
       <tr><td style="color:#666;">Payment reference</td><td>{{ entry.payment_reference or entry.paypal_order_id or '—' }}</td></tr>
       <tr><td style="color:#666;">Total Fee</td><td>${{ "%.2f" | format(entry.total_fee_cents / 100) }}</td></tr>
+      {% if balance_cents %}<tr><td style="color:#666;">Balance</td><td>{% if balance_cents > 0 %}<strong style="color:#c0392b;">Balance due: ${{ "%.2f" | format(balance_cents / 100) }}</strong>{% elif balance_cents < 0 %}<strong style="color:#7a6500;">Refund due in PayPal: ${{ "%.2f" | format(-balance_cents / 100) }}</strong>{% endif %}<br><span class="form-hint">{% if balance_cents > 0 %}Nothing is charged automatically. Once collected: Mark unpaid, then Mark paid with the total received.{% else %}Refunds are made in PayPal, not on this site.{% endif %}</span></td></tr>{% endif %}
       <tr><td style="color:#666;">Source</td>
           <td>{% if entry.is_manual_entry %}Manual (admin){% else %}Online{% endif %}</td></tr>
       <tr><td style="color:#666;">Verification Sent</td><td>{{ '✓' if entry.verification_sent else '—' }}</td></tr>
@@ -79,18 +110,10 @@
 
     {{ payment_actions('entry', entry, entry.total_fee_cents, csrf_token, today) }}
 
-    <h3>Address</h3>
-    <p style="line-height:1.7;">
-      {{ entry.address_line1 }}<br>
-      {% if entry.address_line2 %}{{ entry.address_line2 }}<br>{% endif %}
-      {{ entry.city }}{% if entry.state_province %}, {{ entry.state_province }}{% endif %} {{ entry.postal_code }}<br>
-      {{ entry.country }}
-    </p>
-
     <form method="post" action="/admin/trial-entries/{{ entry.id }}/send-verification" style="margin-top:1rem;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <button type="submit" class="btn btn-secondary">
-        {% if entry.verification_sent %}Resend Verification Email{% else %}Send Verification Email{% endif %}
+        {{ 'Resend' if entry.verification_sent else 'Send' }} email for this entry only
       </button>
     </form>
   </div>
@@ -99,12 +122,12 @@
 <h2 style="margin-top:2rem;">Payment History</h2>
 {{ payment_history(payments) }}
 
-<h2 style="margin-top:2rem;">Class Selections</h2>
+<h2 id="selections" style="margin-top:2rem;">Class Selections</h2>
 {% if selection_rows %}
   <p style="color:#555; max-width:680px;">
     Edit a row to change its class level, which trial it's entered in (Event 1 / Event 2),
     or its day preference. Click <strong>Remove</strong> to drop a single selection;
-    that won't delete the rest of the entry.
+    that won't delete the rest of the entry. Removing a class lowers the fee.
   </p>
   <table style="width:100%; font-size:0.9em;">
     <thead>
@@ -130,6 +153,7 @@
               {% else %}
                 <label style="font-size:0.85em;">Class:
                   <select name="trial_event_class_id" style="font-size:0.9em;">
+                    {% if not sel.class_id %}<option value="" selected>— choose —</option>{% endif %}
                     {% for cid, cname in sel.class_choices %}
                       <option value="{{ cid }}" {% if cid == sel.class_id %}selected{% endif %}>{{ cname }}</option>
                     {% endfor %}
@@ -138,27 +162,22 @@
               {% endif %}
               <label style="font-size:0.85em;">Trial:
                 <select name="akc_trial_pref" style="font-size:0.9em;">
-                  <option value="event_1" {% if sel.akc_trial_pref == 'event_1' %}selected{% endif %}>Event 1</option>
-                  <option value="event_2" {% if sel.akc_trial_pref == 'event_2' %}selected{% endif %}>Event 2</option>
+                  {% for p in sel.pref_choices %}<option value="{{ p }}"{% if p == sel.pref %} selected{% endif %}>{{ pref_labels[p] }}</option>{% endfor %}
                 </select>
               </label>
               <label style="font-size:0.85em;">Day:
                 <select name="day_preference" style="font-size:0.9em;">
-                  <option value="" {% if not sel.day_preference %}selected{% endif %}>— No pref —</option>
-                  <option value="friday" {% if sel.day_preference == 'friday' %}selected{% endif %}>Fri</option>
-                  <option value="saturday" {% if sel.day_preference == 'saturday' %}selected{% endif %}>Sat</option>
-                  <option value="sunday" {% if sel.day_preference == 'sunday' %}selected{% endif %}>Sun</option>
+                  {% for d in sel.day_choices %}<option value="{{ d }}"{% if d == sel.day %} selected{% endif %}>{{ d | title if d else '— No pref —' }}</option>{% endfor %}
                 </select>
               </label>
               <button type="submit" class="btn btn-secondary btn-sm">Save row</button>
             </form>
-            {% if sel.trial_label %}<div style="font-size:0.8em; color:#666; margin-top:0.2rem;">{{ sel.trial_label }}</div>{% endif %}
           </td>
           <td style="padding:0.4rem 0.5rem;">{{ sel.call_number or '—' }}</td>
           <td style="padding:0.4rem 0.5rem;">
             <form method="post" action="/admin/trial-entry-selections/{{ sel.sel_id }}/delete"
                   style="display:inline;"
-                  onsubmit='return confirm({{ ("Remove " ~ sel.te_name ~ " from this entry?")|tojson }})'>
+                  onsubmit='return confirm({{ ("Remove " ~ sel.te_name ~ " from this entry? This lowers the fee.")|tojson }})'>
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <button type="submit" class="btn btn-danger btn-sm">Remove</button>
             </form>
@@ -169,6 +188,47 @@
   </table>
 {% else %}
   <p style="color:#999;"><em>No selections on this entry.</em></p>
+{% endif %}
+
+{% if addable %}
+<h3>Add a class</h3>
+<p class="form-hint">The class's fee is added to the entry. Assign the call number on the Call Numbers page.</p>
+<form method="post" action="/admin/trial-entries/{{ entry.id }}/selections/add"
+      style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <select name="trial_event_id" id="add-event" aria-label="Event" required>
+    <option value="">— event —</option>
+    {% for te in addable %}<option value="{{ te.id }}">{{ te.name }}</option>{% endfor %}
+  </select>
+  <select name="trial_event_class_id" id="add-class" aria-label="Class"></select>
+  <select name="akc_trial_pref" aria-label="Trial">
+    {% for p in add_prefs %}<option value="{{ p }}">{{ pref_labels[p] }}</option>{% endfor %}
+  </select>
+  <select name="day_preference" id="add-day" aria-label="Day"></select>
+  <button type="submit" class="btn btn-primary btn-sm">Add class</button>
+</form>
+<script>
+(function () {
+  var events = {{ addable | tojson }};
+  var ev = document.getElementById('add-event'), cls = document.getElementById('add-class'),
+      day = document.getElementById('add-day');
+  function sync() {
+    var te = events.find(function (e) { return String(e.id) === ev.value; });
+    cls.replaceChildren(); day.replaceChildren();
+    cls.style.display = te && !te.is_test ? '' : 'none';
+    cls.required = !!(te && !te.is_test);
+    day.style.display = te ? '' : 'none';
+    if (!te) return;
+    cls.add(new Option('— class —', ''));
+    te.classes.forEach(function (c) { cls.add(new Option(c[1], c[0])); });
+    te.days.forEach(function (d) {
+      day.add(new Option(d ? d[0].toUpperCase() + d.slice(1) : '— No pref —', d));
+    });
+  }
+  ev.addEventListener('change', sync);
+  sync();
+})();
+</script>
 {% endif %}
 
 <h2 style="margin-top:2rem; color:#c0392b;">Danger zone</h2>

@@ -12,6 +12,7 @@ from app.models.event import Event
 from app.models.trial import Trial, TrialEntry, TrialEntrySelection, TrialEvent, TrialEventClass
 from app.utils.countries import get_country_choices
 from app.utils.account_linking import find_user_by_email
+from app.utils.entry_fees import balance_cents
 from app.utils.flash import flash, get_flash_messages
 from app.utils.payment_checks import can_access, checkout_url, not_payable_reason, open_check
 from app.utils.payment_records import check_info, paid_amount_cents
@@ -708,6 +709,7 @@ def trial_entry_confirmation(
         "selection_details": selection_details,
         "awaiting_paypal": not entry.is_paid and active_payment(db, entry) is not None,
         "amount_cents": paid_amount_cents(db, entry),
+        "balance_cents": balance_cents(db, entry),
         "not_payable": None if entry.is_paid else not_payable_reason(entry, event, db),
         "checkout_url": checkout_url(entry),
         "check": check_info(db, entry, event, payment) if payment else None,

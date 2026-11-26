@@ -20,7 +20,7 @@
   </div>
 </div>
 
-{% macro entry_block(entry, selections) -%}
+{% macro entry_block(entry, selections, balance) -%}
   <div style="border:1px solid #ddd; border-radius:6px; padding:0.75rem 1rem; margin-bottom:0.75rem; background:#fafafa;">
     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; flex-wrap:wrap;">
       <div>
@@ -29,8 +29,10 @@
         {% if entry.dog_breed %} <span style="color:#666;">— {{ entry.dog_breed }}</span>{% endif %}
         <span style="margin-left:0.5rem; font-size:0.85em;">
           {% if entry.is_paid %}<span style="color:#27ae60;">&#10003; Paid</span>{% else %}<span style="color:#c0392b;">Unpaid</span>{% endif %}
+          · ${{ "%.2f" | format(entry.total_fee_cents / 100) }}
+          {% if balance > 0 %}<strong style="color:#c0392b;">Balance due: ${{ "%.2f" | format(balance / 100) }}</strong>{% elif balance < 0 %}<strong style="color:#7a6500;">Refund due in PayPal: ${{ "%.2f" | format(-balance / 100) }}</strong>{% endif %}
           ·
-          {% if entry.verification_sent %}<span style="color:#27ae60;">&#10003; Verified</span>{% else %}<span style="color:#999;">Not verified</span>{% endif %}
+          {% if entry.verification_sent %}<span style="color:#27ae60;">&#10003; Email sent</span>{% else %}<span style="color:#999;">Email not sent</span>{% endif %}
           ·
           {% if entry.is_manual_entry %}<span style="color:#7a6500;">Source: Manual (admin)</span>{% else %}<span style="color:#555;">Source: Online</span>{% endif %}
         </span>
@@ -38,12 +40,6 @@
       <div style="display:flex; gap:0.35rem; flex-wrap:wrap;">
         <a href="/admin/trial-entries/{{ entry.id }}" class="btn btn-secondary btn-sm">Edit</a>
         {{ payment_actions('entry', entry, entry.total_fee_cents, csrf_token, today) }}
-        <form method="post" action="/admin/trial-entries/{{ entry.id }}/send-verification" style="display:inline;">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <button type="submit" class="btn btn-secondary btn-sm" {% if entry.verification_sent %}title="Already sent"{% endif %}>
-            {% if entry.verification_sent %}Resend Email{% else %}Send Email{% endif %}
-          </button>
-        </form>
         <form method="post" action="/admin/trial-entries/{{ entry.id }}/delete" style="display:inline;"
               onsubmit='return confirm({{ ("Delete this entire entry for " ~ entry.dog_name ~ "?")|tojson }})'>
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -84,14 +80,31 @@
   </div>
 {%- endmacro %}
 
-{% macro user_card(group) -%}
+{% macro user_card(group, body) -%}
   <div style="border:1px solid #2c6e2e; border-radius:6px; padding:0.75rem 1rem; margin-bottom:1rem; background:#eafaf1;">
+    {% set total = group.entries | length %}
+    {% set sent = group.entries | map(attribute='entry.verification_sent') | select | list | length %}
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
     <div style="font-weight:600; font-size:1.05em;">
       {{ group.name }}
       {% if group.email %}<span style="color:#555; font-weight:normal; font-size:0.85em;">&lt;{{ group.email }}&gt;</span>{% endif %}
     </div>
+    {% if group.email %}
+    <form method="post" action="/admin/events/{{ event.id }}/verification-emails"
+          style="display:flex; gap:0.6rem; align-items:center; margin:0;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="body" value="{{ body }}">
+      <input type="hidden" name="email" value="{{ group.email }}">
+      <span style="font-size:0.85em; color:#555;">Confirmation sent for {{ sent }} of {{ total }} entr{{ 'ies' if total != 1 else 'y' }}</span>
+      <button type="submit" class="btn btn-secondary btn-sm"
+              title="One email covering all of this person's {{ body }} entries, including any awaiting a check">
+        {{ 'Resend' if sent == total else 'Send' }} {{ body }} Email
+      </button>
+    </form>
+    {% endif %}
+    </div>
     <div style="margin-top:0.5rem;">
-      {% for item in group.entries %}{{ entry_block(item.entry, item.selections) }}{% endfor %}
+      {% for item in group.entries %}{{ entry_block(item.entry, item.selections, item.balance_cents) }}{% endfor %}
     </div>
   </div>
 {%- endmacro %}
@@ -106,7 +119,7 @@
   {% set sec = sections[body] %}
   <h2 style="margin-top:2rem;">{{ body }} Entries <span style="font-size:0.7em; color:#777; font-weight:normal;">({{ sec.count }} entr{{ 'ies' if sec.count != 1 else 'y' }})</span></h2>
   {% if sec.groups %}
-    {% for group in sec.groups %}{{ user_card(group) }}{% endfor %}
+    {% for group in sec.groups %}{{ user_card(group, body) }}{% endfor %}
   {% else %}
     <p style="color:#777; font-style:italic;">No {{ body }} entries yet.</p>
   {% endif %}

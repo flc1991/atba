@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>{{ governing_body }} Trial Entries</title></head>
+<body style="font-family:Arial,sans-serif; max-width:600px; margin:0 auto; color:#333;">
+  <div style="background:#1a5c2a; color:#fff; padding:1.5rem 2rem;">
+    <h1 style="margin:0; font-size:1.4rem;">{{ governing_body }} Trial Entries {{ "Confirmed" if all_paid else "Received" }}</h1>
+    <p style="margin:0.25rem 0 0; opacity:0.85;">{{ event.title }}</p>
+  </div>
+  <div style="padding:1.5rem 2rem;">
+    <p>Dear {{ name }},</p>
+    <p>
+      Here are your {{ governing_body }} entries for <strong>{{ event.title }}</strong>
+      ({{ event.start_date.strftime('%B %d, %Y') }}). Please check that everything is correct.
+    </p>
+    {% for item in items %}
+    <div style="border-top:2px solid #1a5c2a; margin-top:1.5rem;">
+      {% with entry=item.entry, status=item.status, amount_cents=item.amount_cents, check=item.check, record_url=item.record_url, selections=item.selections, balance_cents=item.balance_cents %}
+      {% include "emails/_trial_entry_details.html" %}
+      {% endwith %}
+    </div>
+    {% endfor %}
+    <p style="border-top:2px solid #1a5c2a; margin-top:1.5rem; padding-top:0.75rem;">
+      {% if paid_cents or all_paid %}<strong>Total paid: ${{ "%.2f" | format(paid_cents / 100) }}</strong><br>{% endif %}
+      {% if due_cents %}<strong>Total due: ${{ "%.2f" | format(due_cents / 100) }}</strong><br>{% endif %}
+      {% if refund_cents %}<strong>Total refund due: ${{ "%.2f" | format(refund_cents / 100) }}</strong>{% endif %}
+    </p>
+    <p style="font-size:0.9rem; color:#666;">
+      Call numbers will be assigned after entries close. If you have questions, reply to this email.
+    </p>
+    <p>Thank you,<br><strong>ATBA Trial Secretary</strong></p>
+  </div>
+  <div style="background:#f5f5f5; padding:1rem 2rem; font-size:0.8rem; color:#888;">
+    American Tending Breeds Association &bull; <a href="{{ base_url }}">atba-herding.org</a>
+  </div>
+</body>
+</html>
