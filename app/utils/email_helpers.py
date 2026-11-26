@@ -14,9 +14,11 @@ from app.config import settings
 from app.database import SessionLocal
 from app.models.event import Event
 from app.models.registration import Registration, RegistrationDog
-from app.models.trial import TrialEntry, TrialEntrySelection, TrialEvent, TrialEventClass
+from app.models.trial import Trial, TrialEntry, TrialEntrySelection, TrialEvent, TrialEventClass
+from app.utils.entry_fees import balance_cents
 from app.utils.payment_checks import confirmation_url, open_check
 from app.utils.payment_records import check_info, paid_amount_cents
+from app.utils.trial_selections import trial_label
 
 log = logging.getLogger(__name__)
 
@@ -91,6 +93,82 @@ async def _send(rec, recipient: str, label: str, event, template: str, context: 
     return True
 
 
+def email_key(email: str | None) -> str:
+    """How entries are matched to one person."""
+    return (email or "").strip().lower()
+
+
+def entries_for(db, event_id: int, body: str, email: str, paid_only: bool = False) -> list[TrialEntry]:
+    """One person's entries for AKC or AHBA at an event. A blank address matches nobody."""
+    if not email_key(email):
+        return []
+    entries = db.query(TrialEntry).filter_by(event_id=event_id, governing_body=body)
+    return [
+        e for e in entries.order_by(TrialEntry.dog_name, TrialEntry.id)
+        if email_key(e.handler_email) == email_key(email) and (e.is_paid or not paid_only)
+    ]
+
+
+def _entry_context(db, entry: TrialEntry, event) -> dict:
+    selections = []
+    for sel in db.query(TrialEntrySelection).filter_by(trial_entry_id=entry.id):
+        te = db.get(TrialEvent, sel.trial_event_id)
+        if te is None:
+            continue
+        # Test classes (JHD, instinct tests) have no class level.
+        cls = db.get(TrialEventClass, sel.trial_event_class_id) if sel.trial_event_class_id else None
+        where = [trial_label(db.get(Trial, te.trial_id), sel.akc_trial_pref)]
+        if sel.day_preference:
+            where.append(sel.day_preference.title())
+        selections.append({
+            "event_name": te.name,
+            "class_name": cls.name if cls else "Test",
+            "where": ", ".join(w for w in where if w),
+            "call_number": sel.call_number,
+        })
+    return {
+        "entry": entry, "event": event, "selections": selections,
+        "governing_body": entry.governing_body, "balance_cents": balance_cents(db, entry),
+        **_payment_context(db, entry, event),
+    }
+
+
+async def send_group_verification(event_id: int, body: str, email: str, paid_only: bool = False) -> bool:
+    """One email covering all of a person's AKC (or AHBA) entries at an event."""
+    db = SessionLocal()
+    try:
+        entries = entries_for(db, event_id, body, email, paid_only)
+        if not entries:
+            log.warning("No %s entries to email at event %s", body, event_id)
+            return False
+        event = db.get(Event, event_id)
+        items = [_entry_context(db, e, event) for e in entries]
+        due = [i for i in items if i["status"] != "paid"]
+        context = {
+            "event": event, "items": items, "governing_body": body, "base_url": settings.BASE_URL,
+            "name": entries[0].handler_name, "all_paid": not due,
+            "paid_cents": sum(i["amount_cents"] for i in items if i["status"] == "paid"),
+            "due_cents": sum(i["amount_cents"] for i in due) + sum(max(i["balance_cents"], 0) for i in items),
+            "refund_cents": sum(max(-i["balance_cents"], 0) for i in items),
+        }
+        await _deliver(
+            f"{body} Trial Entries {'Received, payment outstanding' if due else 'Confirmed'} — {event.title}",
+            entries[0].handler_email.strip(),
+            _render("emails/trial_entries_group.html", context),
+            _render("emails/trial_entries_group.txt", context),
+        )
+        for item in items:
+            if item["status"] == "paid":
+                item["entry"].verification_sent = True
+        db.commit()
+        return True
+    except Exception:
+        log.exception("Failed to send %s group email for event %s", body, event_id)
+        return False
+    finally:
+        db.close()
+
+
 async def send_trial_entry_verification(entry_id: int) -> bool:
     db = SessionLocal()
     try:
@@ -99,21 +177,8 @@ async def send_trial_entry_verification(entry_id: int) -> bool:
             log.warning("send_trial_entry_verification: entry %s not found", entry_id)
             return False
         event = db.get(Event, entry.event_id)
-        selections = []
-        for sel in db.query(TrialEntrySelection).filter_by(trial_entry_id=entry_id):
-            te = db.get(TrialEvent, sel.trial_event_id)
-            # Test classes (JHD, instinct tests) have no class level.
-            cls = db.get(TrialEventClass, sel.trial_event_class_id) if sel.trial_event_class_id else None
-            selections.append({
-                "event_name": te.name,
-                "class_name": cls.name if cls else "Test",
-                "call_number": sel.call_number,
-            })
         body = entry.governing_body
-        context = {
-            "entry": entry, "event": event, "selections": selections,
-            "governing_body": body, **_payment_context(db, entry, event),
-        }
+        context = _entry_context(db, entry, event)
         template = f"trial_entry_verification_{'akc' if body == 'AKC' else 'ahba'}"
         return await _send(entry, entry.handler_email, f"{body} Trial Entry", event, template, context, db)
     except Exception:

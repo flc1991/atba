@@ -449,7 +449,9 @@ def entries_page(
     from app.models.event import Event
     from app.models.registration import Registration, RegistrationDog
     from app.utils.payment_checks import checkout_url, confirmation_url
+    from app.utils.entry_fees import balance_cents
     from app.utils.payment_records import awaiting_checks, check_info
+    from app.utils.trial_selections import trial_label
     from app.utils.paypal_payments import active_payment
 
     today = date.today()
@@ -477,28 +479,12 @@ def entries_page(
         )
         sel_list = []
         for sel, te, tec, trial in sels:
-            # Render a label for which event-side this selection is in
-            trial_label = ""
-            if sel.akc_trial_pref == "event_1":
-                if trial.governing_body == "AKC" and trial.akc_event_number:
-                    trial_label = f"Event 1 (#{trial.akc_event_number})"
-                elif trial.governing_body == "AHBA" and trial.ahba_event_1_judge:
-                    trial_label = f"Event 1 ({trial.ahba_event_1_judge})"
-                else:
-                    trial_label = "Event 1"
-            elif sel.akc_trial_pref == "event_2":
-                if trial.governing_body == "AKC" and trial.akc_event_number_2:
-                    trial_label = f"Event 2 (#{trial.akc_event_number_2})"
-                elif trial.governing_body == "AHBA" and trial.ahba_event_2_judge:
-                    trial_label = f"Event 2 ({trial.ahba_event_2_judge})"
-                else:
-                    trial_label = "Event 2"
             sel_list.append({
                 "trial_event_name": te.name,
                 "class_name": tec.name if tec else "—",
                 "governing_body": trial.governing_body,
                 "call_number": sel.call_number,
-                "trial_label": trial_label,
+                "trial_label": trial_label(trial, sel.akc_trial_pref),
                 "day_preference": sel.day_preference,
             })
         bucket = (entry, event, sel_list)
@@ -538,6 +524,7 @@ def entries_page(
                 open_checks[(kind, rec.id)] = check_info(db, rec, event, pending[rec.id])
 
     ctx.update({
+        "balances": {e.id: balance_cents(db, e) for e in trial_entries_raw},
         "open_checks": open_checks,
         "processing": processing,
         "checkout_url": checkout_url,

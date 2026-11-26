@@ -13,6 +13,7 @@
   <div style="display:flex; flex-direction:column; gap:0.35rem; align-items:flex-start; min-height:60px;">
     {% if rec.is_paid %}
       <span style="display:inline-block; padding:0.2rem 0.6rem; border-radius:10px; background:#eafaf1; color:#27ae60; font-size:0.85em; font-weight:600; white-space:nowrap;">&#10003; Paid</span>
+      {% if kind == 'entry' %}{% set balance = balances[rec.id] %}{% if balance > 0 %}<small style="color:#c0392b;">Balance due: ${{ "%.2f" | format(balance / 100) }}</small>{% elif balance < 0 %}<small style="color:#7a6500;">Refund due: ${{ "%.2f" | format(-balance / 100) }}</small>{% endif %}{% endif %}
     {% elif (kind, rec.id) in processing %}
       <span style="display:inline-block; padding:0.2rem 0.6rem; border-radius:10px; background:#eaf4fb; color:#1f618d; font-size:0.85em; font-weight:600; white-space:nowrap;">Payment processing</span>
       <a href="{{ checkout_url(rec) }}" class="btn btn-secondary btn-sm">Check status</a>

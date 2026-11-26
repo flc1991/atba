@@ -1,0 +1,20 @@
+{{ governing_body }} TRIAL ENTRIES {{ "CONFIRMED" if all_paid else "RECEIVED" }}
+{{ event.title }} ({{ event.start_date.strftime('%B %d, %Y') }})
+
+Dear {{ name }},
+
+Here are your {{ governing_body }} entries. Please check that everything is correct.
+{% for item in items %}
+----------------------------------------
+{% with entry=item.entry, status=item.status, amount_cents=item.amount_cents, check=item.check, record_url=item.record_url, selections=item.selections, balance_cents=item.balance_cents %}{% include "emails/_trial_entry_details.txt" %}{% endwith %}
+{% endfor %}
+----------------------------------------
+{% if paid_cents or all_paid %}Total paid: ${{ "%.2f" | format(paid_cents / 100) }}
+{% endif %}{% if due_cents %}Total due: ${{ "%.2f" | format(due_cents / 100) }}
+{% endif %}{% if refund_cents %}Total refund due: ${{ "%.2f" | format(refund_cents / 100) }}
+{% endif %}
+Call numbers will be assigned after entries close.
+
+Thank you,
+ATBA Trial Secretary
+{{ base_url }}

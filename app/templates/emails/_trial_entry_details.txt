@@ -1,0 +1,14 @@
+Dog: {{ entry.dog_name }}{% if entry.dog_breed %} ({{ entry.dog_breed }}){% endif %}
+
+{% if entry.dog_registration_number %}Registration Number: {% if governing_body == 'AHBA' and entry.ahba_number_type %}{{ entry.ahba_number_type }} {% endif %}{{ entry.dog_registration_number }}
+{% endif %}Handler: {{ entry.handler_name }}
+{{ "Total Paid" if status == "paid" else "Amount Due" }}: ${{ "%.2f" | format(amount_cents / 100) }}
+{% if balance_cents %}New entry fee: ${{ "%.2f" | format(entry.total_fee_cents / 100) }}
+{% if balance_cents > 0 %}Balance due: ${{ "%.2f" | format(balance_cents / 100) }}{% else %}Refund due: ${{ "%.2f" | format(-balance_cents / 100) }}{% endif %}
+
+{% endif %}{% include "emails/_payment_status.txt" %}
+
+{{ governing_body }} CLASS ENTRIES:
+{% for sel in selections %}
+  {{ sel.event_name }} — {{ sel.class_name }}{% if sel.where %} — {{ sel.where }}{% endif %} — Call #: {{ sel.call_number if sel.call_number else 'TBA' }}
+{% endfor %}

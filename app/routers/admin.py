@@ -18,6 +18,7 @@ from app.models.registration import Registration, RegistrationDog
 from app.models.trial import Trial, TrialEntry, TrialEntrySelection, TrialEvent, TrialEventClass
 from app.models.user import User
 from app.utils.countries import get_country_choices
+from app.utils.entry_fees import balance_cents, change_fee, ensure_fee_can_change, fee_message, runs
 from app.utils import email_helpers
 from app.utils.flash import flash
 from app.utils.payment_records import (
@@ -33,6 +34,15 @@ from app.utils.payment_records import (
 )
 from app.utils.registration_windows import compute_ahba_close, compute_akc_close, get_trial_status
 from app.utils.registry import resolve_ahba_number_type
+from app.utils.trial_entry_fields import apply_entry_form, form_values
+from app.utils.trial_selections import (
+    day_options,
+    entry_trial,
+    event_classes,
+    parse_selection,
+    pref_options,
+    trial_label,
+)
 from app.routers.trials import _parse_selection_rows, _compute_fee_from_rows
 
 router = APIRouter(tags=["admin"])
@@ -622,22 +632,6 @@ def trial_entries_list(
                 if sel.trial_event_class_id is not None else None
             )
             classes = db.query(TrialEventClass).filter_by(trial_event_id=te.id).order_by(TrialEventClass.sort_order).all()
-            # Trial-side label (Event 1 / Event 2 + identifier)
-            trial_label = ""
-            if sel.akc_trial_pref == "event_1":
-                if trial and trial.governing_body == "AKC" and trial.akc_event_number:
-                    trial_label = f"Event 1 (#{trial.akc_event_number})"
-                elif trial and trial.governing_body == "AHBA" and trial.ahba_event_1_judge:
-                    trial_label = f"Event 1 ({trial.ahba_event_1_judge})"
-                else:
-                    trial_label = "Event 1"
-            elif sel.akc_trial_pref == "event_2":
-                if trial and trial.governing_body == "AKC" and trial.akc_event_number_2:
-                    trial_label = f"Event 2 (#{trial.akc_event_number_2})"
-                elif trial and trial.governing_body == "AHBA" and trial.ahba_event_2_judge:
-                    trial_label = f"Event 2 ({trial.ahba_event_2_judge})"
-                else:
-                    trial_label = "Event 2"
             rows.append({
                 "sel_id": sel.id,
                 "te_id": te.id,
@@ -648,7 +642,7 @@ def trial_entries_list(
                 "class_name": cls.name if cls else "",
                 "class_choices": [(c.id, c.name) for c in classes],
                 "akc_trial_pref": sel.akc_trial_pref or "event_1",
-                "trial_label": trial_label,
+                "trial_label": trial_label(trial, sel.akc_trial_pref),
                 "day_preference": sel.day_preference or "",
                 "call_number": sel.call_number,
             })
@@ -662,15 +656,16 @@ def trial_entries_list(
         body = entry.governing_body
         if body not in bodies or entry.id in waiting:
             continue
-        key = (entry.handler_email or "").strip().lower() or f"id:{entry.id}"
+        key = email_helpers.email_key(entry.handler_email) or f"id:{entry.id}"
         bodies[body].setdefault(key, {
             "label": entry.handler_name + (f" <{entry.handler_email}>" if entry.handler_email else ""),
-            "email": entry.handler_email or "",
+            "email": email_helpers.email_key(entry.handler_email),
             "name": entry.handler_name,
             "entries": [],
         })
         bodies[body][key]["entries"].append({
             "entry": entry,
+            "balance_cents": balance_cents(db, entry),
             "selections": _build_selections(entry),
         })
     for body in ("AKC", "AHBA"):
@@ -816,22 +811,6 @@ def export_trial_xlsx(
             "Manual" if entry.is_manual_entry else "Online",
         ]
 
-    def _trial_label(body: str, sel) -> str:
-        trial = trials_by_body.get(body)
-        if sel.akc_trial_pref == "event_1":
-            if trial and body == "AKC" and trial.akc_event_number:
-                return f"Event 1 (#{trial.akc_event_number})"
-            if trial and body == "AHBA" and trial.ahba_event_1_judge:
-                return f"Event 1 ({trial.ahba_event_1_judge})"
-            return "Event 1" if sel.akc_trial_pref else ""
-        if sel.akc_trial_pref == "event_2":
-            if trial and body == "AKC" and trial.akc_event_number_2:
-                return f"Event 2 (#{trial.akc_event_number_2})"
-            if trial and body == "AHBA" and trial.ahba_event_2_judge:
-                return f"Event 2 ({trial.ahba_event_2_judge})"
-            return "Event 2"
-        return ""
-
     def _write_body_sheet(body: str, sheet_title: str, extra_header, extra_cols_fn):
         ws = wb.create_sheet(sheet_title)
         ws.append(common_header + extra_header + selection_header + tail_header)
@@ -858,7 +837,7 @@ def export_trial_xlsx(
                     + [
                         _strip_stock_count(te.name) if te else "",
                         cls.name if cls else ("test" if te and te.is_test_class else ""),
-                        _trial_label(body, sel),
+                        trial_label(trials_by_body.get(body), sel.akc_trial_pref),
                         sel.day_preference or "",
                         sel.call_number or "",
                     ]
@@ -875,13 +854,14 @@ def export_trial_xlsx(
 
     # ---- Sheet 2: Payment Summary ----
     pay = wb.create_sheet("Payment Summary")
-    pay.append(["Body", "Owner Name", "Dog", "Total Fee ($)", "Paid", "Payment Reference"])
+    pay.append(["Body", "Owner Name", "Dog", "Total Fee ($)", "Paid", "Payment Reference", "Balance Due / Refund (-) ($)"])
     for cell in pay[1]:
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill(start_color="2C6E2E", end_color="2C6E2E", fill_type="solid")
     body_totals: dict[str, dict[str, float]] = {"AKC": {"all": 0, "paid": 0}, "AHBA": {"all": 0, "paid": 0}}
     for entry in all_entries:
         fee = (entry.total_fee_cents or 0) / 100
+        balance = balance_cents(db, entry) / 100
         pay.append([
             entry.governing_body,
             entry.handler_name,
@@ -889,12 +869,13 @@ def export_trial_xlsx(
             round(fee, 2),
             "Yes" if entry.is_paid else "No",
             entry.payment_reference or entry.paypal_order_id or "",
+            round(balance, 2),
         ])
         b = entry.governing_body
         if b in body_totals:
             body_totals[b]["all"] += fee
             if entry.is_paid:
-                body_totals[b]["paid"] += fee
+                body_totals[b]["paid"] += fee - balance
     pay.append([])
     pay.append(["", "", "AKC total billed", round(body_totals["AKC"]["all"], 2), "", ""])
     pay.append(["", "", "AKC total collected", round(body_totals["AKC"]["paid"], 2), "", ""])
@@ -973,6 +954,59 @@ def export_trial_xlsx(
     )
 
 
+def _entry_page(
+    request: Request, admin: User, db: Session, entry: TrialEntry, values=None, status_code: int = 200
+):
+    """The entry edit page. `values` redisplays what was typed after an error."""
+    event = _get_event(entry.event_id, db)
+    trial = entry_trial(db, entry)
+
+    selection_rows: list[dict] = []
+    for sel in db.query(TrialEntrySelection).filter_by(trial_entry_id=entry.id):
+        te = db.get(TrialEvent, sel.trial_event_id)
+        if te is None:
+            continue
+        selection_rows.append({
+            "sel_id": sel.id,
+            "te_name": te.name,
+            "is_test_class": te.is_test_class,
+            "class_id": sel.trial_event_class_id,
+            "class_choices": [(c.id, c.name) for c in event_classes(db, te)],
+            "pref": sel.akc_trial_pref or "event_1",
+            "pref_choices": pref_options(trial, sel.akc_trial_pref),
+            "day": sel.day_preference or "",
+            "day_choices": day_options(entry.governing_body, te, sel.day_preference or ""),
+            "trial_label": trial_label(trial, sel.akc_trial_pref),
+            "call_number": sel.call_number,
+        })
+    addable = []
+    if trial is not None:
+        events = db.query(TrialEvent).filter_by(trial_id=trial.id).order_by(TrialEvent.sort_order)
+        addable = [{
+            "id": te.id, "name": te.name, "is_test": te.is_test_class,
+            "classes": [[c.id, c.name] for c in event_classes(db, te)],
+            "days": day_options(entry.governing_body, te),
+        } for te in events]
+
+    ctx = _admin_ctx(request, admin)
+    ctx.update({
+        "event": event,
+        "entry": entry,
+        "values": {**form_values(entry), **(values or {})},
+        "countries": get_country_choices(),
+        "selection_rows": selection_rows,
+        "addable": addable,
+        "add_prefs": pref_options(trial),
+        "pref_labels": {p: trial_label(trial, p) for p in ("event_1", "event_2", "both")},
+        "payments": history(db, entry),
+        "balance_cents": balance_cents(db, entry),
+        "today": today_et().isoformat(),
+    })
+    return templates.TemplateResponse(
+        request, "admin/trial_entry_form.html", ctx, status_code=status_code
+    )
+
+
 @router.get("/trial-entries/{entry_id}", response_class=HTMLResponse)
 def trial_entry_detail(
     entry_id: int,
@@ -980,67 +1014,13 @@ def trial_entry_detail(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    entry = _get_entry(entry_id, db)
-    event = _get_event(entry.event_id, db)
-    trial = db.query(Trial).filter_by(
-        event_id=event.id, governing_body=entry.governing_body
-    ).first()
+    return _entry_page(request, admin, db, _get_entry(entry_id, db))
 
-    # Build editable selection rows (matching the trial_entries list page shape).
-    selection_rows: list[dict] = []
-    sels = db.query(TrialEntrySelection).filter_by(trial_entry_id=entry.id).all()
-    for sel in sels:
-        te = db.get(TrialEvent, sel.trial_event_id)
-        if te is None:
-            continue
-        cls = (
-            db.get(TrialEventClass, sel.trial_event_class_id)
-            if sel.trial_event_class_id is not None else None
-        )
-        classes = (
-            db.query(TrialEventClass)
-            .filter_by(trial_event_id=te.id)
-            .order_by(TrialEventClass.sort_order)
-            .all()
-        )
-        trial_label = ""
-        if sel.akc_trial_pref == "event_1":
-            if trial and trial.governing_body == "AKC" and trial.akc_event_number:
-                trial_label = f"Event 1 (#{trial.akc_event_number})"
-            elif trial and trial.governing_body == "AHBA" and trial.ahba_event_1_judge:
-                trial_label = f"Event 1 ({trial.ahba_event_1_judge})"
-            else:
-                trial_label = "Event 1"
-        elif sel.akc_trial_pref == "event_2":
-            if trial and trial.governing_body == "AKC" and trial.akc_event_number_2:
-                trial_label = f"Event 2 (#{trial.akc_event_number_2})"
-            elif trial and trial.governing_body == "AHBA" and trial.ahba_event_2_judge:
-                trial_label = f"Event 2 ({trial.ahba_event_2_judge})"
-            else:
-                trial_label = "Event 2"
-        selection_rows.append({
-            "sel_id": sel.id,
-            "te_name": te.name,
-            "is_test_class": te.is_test_class,
-            "class_id": sel.trial_event_class_id,
-            "class_name": cls.name if cls else "",
-            "class_choices": [(c.id, c.name) for c in classes],
-            "akc_trial_pref": sel.akc_trial_pref or "event_1",
-            "trial_label": trial_label,
-            "day_preference": sel.day_preference or "",
-            "call_number": sel.call_number,
-        })
 
-    ctx = _admin_ctx(request, admin)
-    ctx.update({
-        "event": event,
-        "entry": entry,
-        "trial": trial,
-        "selection_rows": selection_rows,
-        "payments": history(db, entry),
-        "today": today_et().isoformat(),
-    })
-    return templates.TemplateResponse(request, "admin/trial_entry_form.html", ctx)
+def _flash_entry_saved(request: Request, entry: TrialEntry, message: str) -> None:
+    if entry.verification_sent:
+        message += " A confirmation email was already sent; resend it if the entrant should know."
+    flash(request, message, "success")
 
 
 @router.post("/trial-entries/{entry_id}/edit")
@@ -1053,17 +1033,16 @@ async def trial_entry_edit(
     form = await request.form()
     _validate_csrf(form.get("csrf_token", ""), request)
     entry = _get_entry(entry_id, db)
-    entry.handler_name = form.get("handler_name", entry.handler_name).strip()
-    entry.handler_email = form.get("handler_email", entry.handler_email).strip()
-    entry.handler_phone = form.get("handler_phone", "").strip() or None
-    entry.dog_name = form.get("dog_name", entry.dog_name).strip()
-    entry.dog_breed = form.get("dog_breed", "").strip() or None
-    entry.dog_registration_number = form.get("dog_registration_number", "").strip() or None
-    if entry.governing_body == "AHBA" and "ahba_number_type" in form:
-        entry.ahba_number_type = resolve_ahba_number_type(form)
-    entry.payment_reference = (form.get("payment_reference") or "").strip() or None
+    errors = apply_entry_form(entry, form)
+    if errors:
+        for msg in errors:
+            flash(request, msg, "error")
+        values = dict(form)
+        if "akc_separate_entries_shown" in form:
+            values["akc_separate_entries"] = "akc_separate_entries" in form
+        return _entry_page(request, admin, db, entry, values, status_code=422)
     db.commit()
-    flash(request, "Entry updated.", "success")
+    _flash_entry_saved(request, entry, "Entry updated.")
     return RedirectResponse(f"/admin/trial-entries/{entry_id}", status_code=303)
 
 
@@ -1088,6 +1067,40 @@ async def trial_entry_delete(
     return RedirectResponse(f"/admin/events/{event_id}/trial-entries", status_code=303)
 
 
+def _selections_url(entry_id: int) -> str:
+    return f"/admin/trial-entries/{entry_id}#selections"
+
+
+# Adding or removing a class changes the fee. Nothing is charged here; refunds are made in PayPal.
+
+@router.post("/trial-entries/{entry_id}/selections/add")
+async def trial_entry_selection_add(
+    entry_id: int,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    form = await request.form()
+    _validate_csrf(form.get("csrf_token", ""), request)
+    entry = _get_entry(entry_id, db)
+    raw = (form.get("trial_event_id") or "").strip()
+    te = db.get(TrialEvent, int(raw)) if raw.isdecimal() else None
+    try:
+        if te is None:
+            raise ValueError("Choose an event to add.")
+        values = parse_selection(db, entry, te, form)
+        ensure_fee_can_change(db, entry)
+    except ValueError as exc:
+        flash(request, str(exc), "error")
+    else:
+        old_fee = entry.total_fee_cents
+        db.add(TrialEntrySelection(trial_entry_id=entry.id, trial_event_id=te.id, **values))
+        change_fee(db, entry, te.fee_cents)
+        db.commit()
+        _flash_entry_saved(request, entry, f"{te.name} added. {fee_message(db, entry, old_fee)}")
+    return RedirectResponse(_selections_url(entry_id), status_code=303)
+
+
 @router.post("/trial-entry-selections/{sel_id}/update")
 async def trial_entry_selection_update(
     sel_id: int,
@@ -1095,39 +1108,35 @@ async def trial_entry_selection_update(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """Update class_id / akc_trial_pref / day_preference on a single selection."""
+    """Update class / Event 1 or 2 / day preference on a single selection."""
     form = await request.form()
     _validate_csrf(form.get("csrf_token", ""), request)
     sel = db.get(TrialEntrySelection, sel_id)
     if not sel:
         raise HTTPException(404)
-    entry = db.get(TrialEntry, sel.trial_entry_id)
+    entry = _get_entry(sel.trial_entry_id, db)
     te = db.get(TrialEvent, sel.trial_event_id)
-
-    raw_cls = (form.get("trial_event_class_id") or "").strip()
-    if raw_cls:
-        try:
-            cid = int(raw_cls)
-        except ValueError:
-            cid = None
-        if cid is not None:
-            valid_ids = {c.id for c in db.query(TrialEventClass).filter_by(trial_event_id=te.id).all()}
-            if cid in valid_ids:
-                sel.trial_event_class_id = cid
-    elif te.is_test_class:
-        sel.trial_event_class_id = None
-
-    pref = (form.get("akc_trial_pref") or "").strip()
-    if pref in ("event_1", "event_2"):
-        sel.akc_trial_pref = pref
-
-    day = (form.get("day_preference") or "").strip()
-    if day in ("friday", "saturday", "sunday", ""):
-        sel.day_preference = day or None
-
-    db.commit()
-    flash(request, "Selection updated.", "success")
-    return RedirectResponse(f"/admin/events/{entry.event_id}/trial-entries", status_code=303)
+    if te is None:
+        raise HTTPException(404)
+    try:
+        values = parse_selection(db, entry, te, form, sel)
+        # Moving an old "both" row to one side drops a run.
+        delta = te.fee_cents * (runs(values["akc_trial_pref"]) - runs(sel.akc_trial_pref))
+        if delta:
+            ensure_fee_can_change(db, entry)
+    except ValueError as exc:
+        flash(request, str(exc), "error")
+    else:
+        old_fee = entry.total_fee_cents
+        for name, value in values.items():
+            setattr(sel, name, value)
+        change_fee(db, entry, delta)
+        db.commit()
+        message = "Selection updated."
+        if delta:
+            message += " " + fee_message(db, entry, old_fee)
+        _flash_entry_saved(request, entry, message)
+    return RedirectResponse(_selections_url(entry.id), status_code=303)
 
 
 @router.post("/trial-entry-selections/{sel_id}/delete")
@@ -1142,11 +1151,22 @@ async def trial_entry_selection_delete(
     sel = db.get(TrialEntrySelection, sel_id)
     if not sel:
         raise HTTPException(404)
-    entry = db.get(TrialEntry, sel.trial_entry_id)
-    db.delete(sel)
-    db.commit()
-    flash(request, "Selection removed from entry.", "success")
-    return RedirectResponse(f"/admin/events/{entry.event_id}/trial-entries", status_code=303)
+    entry = _get_entry(sel.trial_entry_id, db)
+    te = db.get(TrialEvent, sel.trial_event_id)
+    try:
+        ensure_fee_can_change(db, entry)
+    except ValueError as exc:
+        flash(request, str(exc), "error")
+    else:
+        old_fee = entry.total_fee_cents
+        fee = te.fee_cents * runs(sel.akc_trial_pref) if te else 0
+        db.delete(sel)
+        change_fee(db, entry, -fee)
+        db.commit()
+        _flash_entry_saved(
+            request, entry, f"Selection removed from entry. {fee_message(db, entry, old_fee)}"
+        )
+    return RedirectResponse(_selections_url(entry.id), status_code=303)
 
 
 # ----------------------------------------------------------------
@@ -2142,6 +2162,31 @@ async def send_entry_verification(
     return RedirectResponse(f"/admin/trial-entries/{entry_id}", status_code=303)
 
 
+@router.post("/events/{event_id}/verification-emails")
+async def send_group_verification(
+    event_id: int,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """One email covering all of a person's AKC (or AHBA) entries at an event."""
+    form = await request.form()
+    _validate_csrf(form.get("csrf_token", ""), request)
+    _get_event(event_id, db)
+    body, email = form.get("body", ""), email_helpers.email_key(form.get("email"))
+    if not email_helpers.entries_for(db, event_id, body, email):
+        flash(request, "No entries found for that email address.", "error")
+    elif not email_helpers.mail_configured():
+        flash(request, "Email is not configured (MAIL_FROM is blank).", "error")
+    else:
+        background_tasks.add_task(
+            email_helpers.send_group_verification, event_id=event_id, body=body, email=email
+        )
+        flash(request, f"{body} email queued for {email}.", "success")
+    return RedirectResponse(f"/admin/events/{event_id}/trial-entries", status_code=303)
+
+
 @router.post("/registrations/{reg_id}/send-verification")
 async def send_reg_verification(
     reg_id: int,
@@ -2175,11 +2220,20 @@ async def send_all_verifications(
         flash(request, "Email is not configured (MAIL_FROM is blank).", "error")
         return back
     due = {"event_id": event_id, "verification_sent": False, "is_paid": True}
-    records = [r for r in db.query(TrialEntry).filter_by(**due) if r.handler_email]
-    records += [r for r in db.query(Registration).filter_by(**due) if r.email]
-    for rec in records:
-        email_helpers.queue_email(background_tasks, rec)
-    flash(request, f"{len(records)} confirmation email(s) queued for paid entries.", "success")
+    groups = {
+        (e.governing_body, email_helpers.email_key(e.handler_email))
+        for e in db.query(TrialEntry).filter_by(**due)
+        if email_helpers.email_key(e.handler_email)
+    }
+    for body, email in sorted(groups):
+        background_tasks.add_task(
+            email_helpers.send_group_verification,
+            event_id=event_id, body=body, email=email, paid_only=True,
+        )
+    regs = [r for r in db.query(Registration).filter_by(**due) if r.email]
+    for reg in regs:
+        email_helpers.queue_email(background_tasks, reg)
+    flash(request, f"{len(groups) + len(regs)} confirmation email(s) queued for paid entries.", "success")
     return back
 
 
